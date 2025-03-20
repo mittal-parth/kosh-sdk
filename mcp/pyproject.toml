@@ -1,0 +1,20 @@
+[project]
+name = "weather-mcp"
+version = "0.1.0"
+description = "MCP Weather Service"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.28.1",
+    "fastmcp>=0.3.0",
+    "pydantic>=2.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "fastmcp>=0.3.0",
+]
+
+[tool.uv.sources]
+weather-mcp = { workspace = true }
