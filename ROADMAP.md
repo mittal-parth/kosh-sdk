@@ -7,7 +7,6 @@
    - Initialize project structure
    - Set up development environment
    - Create basic package structure
-   - Set up testing framework
 
 2. **Core SDK Classes**
    - Implement base `Tool` class
