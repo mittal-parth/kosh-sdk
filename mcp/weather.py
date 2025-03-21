@@ -26,7 +26,6 @@ mcp = FastMCP(
 NWS_API_BASE = "https://api.weather.gov"
 USER_AGENT = "weather-app/1.0"
 
-
 async def make_nws_request(url: str) -> dict[str, Any] | None:
     """Make a request to the NWS API with proper error handling."""
     headers = {
@@ -129,4 +128,4 @@ if __name__ == "__main__":
         mcp.run(transport='stdio')
     except Exception as e:
         logger.error(f"Server error: {str(e)}")
-        sys.exit(1)
+        sys.exit(1) 
