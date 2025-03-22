@@ -1,0 +1,19 @@
+{
+  "name": "mcp-nilrag-ts",
+  "version": "0.1.0",
+  "description": "TypeScript MCP Server for nilRAG that calls Python functions",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc && node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "typescript": "^5.3.3"
+  }
+} 

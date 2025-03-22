@@ -4,6 +4,7 @@ nilDB class definition for secure data storage and RAG inference.
 
 import asyncio
 import time
+import logging
 from dataclasses import dataclass
 from http import HTTPStatus
 from typing import Any, Dict, List, Optional
@@ -13,6 +14,9 @@ import aiohttp
 import jwt
 import requests
 from ecdsa import SECP256k1, SigningKey
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 # Constants
 TIMEOUT = 3600
@@ -188,7 +192,7 @@ class NilDB:
         # Create schema on all nodes in parallel
         tasks = [create_schema_for_node(node) for node in self.nodes]
         await asyncio.gather(*tasks)
-        print(f"Schema {schema_id} created successfully.")
+        # Just return the schema ID without printing anything
         return schema_id
 
     async def init_diff_query(self):
@@ -272,7 +276,7 @@ class NilDB:
         # Create query on all nodes in parallel
         tasks = [create_query_for_node(node) for node in self.nodes]
         await asyncio.gather(*tasks)
-        print(f"Query {diff_query_id} created successfully.")
+        # Just return the diff_query_id without printing anything
         return diff_query_id
 
     def generate_jwt(self, secret_key: str, ttl: int = 3600):
@@ -495,10 +499,10 @@ class NilDB:
 
         async def process_batch(batch_start: int, batch_end: int) -> None:
             """Process and upload a single batch of documents."""
-            print(
-                f"Processing batch {batch_start//batch_size + 1}: "
-                f"documents {batch_start} to {batch_end}"
-            )
+            # logger.info(
+            #     f"Processing batch {batch_start//batch_size + 1}: "
+            #     f"documents {batch_start} to {batch_end}"
+            # )
 
             # Generate document IDs for this batch
             doc_ids = [str(uuid4()) for _ in range(batch_start, batch_end)]
@@ -521,15 +525,16 @@ class NilDB:
 
             try:
                 results = await asyncio.gather(*tasks)
-                print(f"Successfully uploaded batch {batch_start//batch_size + 1}")
+                # logger.info(f"Successfully uploaded batch {batch_start//batch_size + 1}")
                 for result in results:
-                    print({
-                        "status_code": 200,
-                        "message": "Success",
-                        "response_json": result
-                    })
+                    # logger.info({
+                    #     "status_code": 200,
+                    #     "message": "Success",
+                    #     "response_json": result
+                    # })
+                    pass
             except Exception as e:
-                print(f"Error uploading batch {batch_start//batch_size + 1}: {str(e)}")
+                # logger.error(f"Error uploading batch {batch_start//batch_size + 1}: {str(e)}")
                 raise
 
         # Process data in batches

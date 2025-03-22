@@ -4,9 +4,13 @@ Configuration loading utilities for nilRAG.
 
 import json
 import os
+import logging
 from typing import Optional, Tuple
 
 from nilrag.nildb_requests import NilDB, Node
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 
 def load_nil_db_config(
@@ -36,7 +40,7 @@ def load_nil_db_config(
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"Error: NilDB configuration file not found at {config_path}")
 
-    print(f"Loading NilDB configuration from {config_path}...")
+    # logger.info(f"Loading NilDB configuration from {config_path}...")
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             data = json.load(f)
