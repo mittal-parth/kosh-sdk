@@ -1,18 +1,14 @@
-# Use ARM64 architecture for Linux
-FROM node:20-alpine
+FROM --platform=linux/amd64 node:20-alpine
 
 WORKDIR /app
 
-# Install pnpm
-RUN npm install -g pnpm
+# Copy package files
+COPY package.json ./
 
-# Copy only package files first
-COPY package.json pnpm-lock.yaml ./
+# Copy the pre-built node_modules directory
+COPY node_modules/ ./node_modules/
 
-# Install dependencies for Linux ARM64
-RUN pnpm install
-
-# Copy remaining application files (excluding node_modules)
+# Copy application files
 COPY src/ ./src/
 COPY public/ ./public/
 COPY *.json *.js *.ts *.html ./
@@ -22,4 +18,4 @@ COPY .gitignore ./
 EXPOSE 5173
 
 # Command to run the development server
-CMD ["npm", "run", "dev"] 
+CMD ["npm", "run", "dev", "--host", "0.0.0.0"]
