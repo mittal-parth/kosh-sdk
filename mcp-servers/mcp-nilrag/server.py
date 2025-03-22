@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import shutil
+import sys
 from enum import Enum
 from pathlib import Path
 from typing import Optional
@@ -107,9 +108,9 @@ class NilRAGManager:
         """
         # If config file doesn't exist, create it from sample
         if not self.config_path.exists():
-            self.logger.info(
-                f"Config file not found at {self.config_path}, creating from sample"
-            )
+            # self.logger.info(
+            #     f"Config file not found at {self.config_path}, creating from sample"
+            # )
 
             # Ensure the directory exists
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -122,11 +123,11 @@ class NilRAGManager:
 
             # Copy the sample config
             shutil.copy2(self.sample_config_path, self.config_path)
-            self.logger.info(f"Created config file from sample at {self.config_path}")
+            # self.logger.info(f"Created config file from sample at {self.config_path}")
 
         # Update the config with org_secret_key and org_did if provided
         if self.org_secret_key or self.org_did:
-            self.logger.info("Updating config with provided organization credentials")
+            # self.logger.info("Updating config with provided organization credentials")
             with open(self.config_path, "r", encoding="utf-8") as f:
                 config_data = json.load(f)
 
@@ -139,9 +140,9 @@ class NilRAGManager:
             with open(self.config_path, "w", encoding="utf-8") as f:
                 json.dump(config_data, f, indent=4)
 
-            self.logger.info(
-                f"Updated config at {self.config_path} with organization credentials"
-            )
+            # self.logger.info(
+            #     f"Updated config at {self.config_path} with organization credentials"
+            # )
 
         return str(self.config_path)
 
@@ -153,10 +154,14 @@ class NilRAGManager:
             str: Status message
         """
         if self.is_initialized:
-            return "Schema and query already initialized"
+            return json.dumps({"status": "success", "message": "Schema and query already initialized"})
 
         # Setup config file before loading
         try:
+            # Temporarily redirect stdout to suppress any print statements
+            original_stdout = sys.stdout
+            sys.stdout = open(os.devnull, 'w')
+            
             self.setup_config_file()
 
             # Load NilDB configuration
@@ -178,11 +183,15 @@ class NilRAGManager:
 
             # Initialize schema
             schema_id = await self.nil_db.init_schema()
-            self.logger.info(f"Schema initialized with ID: {schema_id}")
+            # self.logger.info(f"Schema initialized with ID: {schema_id}")
 
             # Initialize query
             diff_query_id = await self.nil_db.init_diff_query()
-            self.logger.info(f"Query initialized with ID: {diff_query_id}")
+            # self.logger.info(f"Query initialized with ID: {diff_query_id}")
+
+            # Restore stdout
+            sys.stdout.close()
+            sys.stdout = original_stdout
 
             # Update config file with new IDs and tokens
             with open(self.config_path, "r", encoding="utf-8") as f:
@@ -195,13 +204,21 @@ class NilRAGManager:
                 json.dump(data, f, indent=4)
 
             self.is_initialized = True
-            self.logger.info(
-                "Updated nilDB configuration file with schema and query IDs"
-            )
-            return "Schema and query initialized successfully"
+            # self.logger.info(
+            #     "Updated nilDB configuration file with schema and query IDs"
+            # )
+            return json.dumps({"status": "success", "message": "Schema and query initialized successfully"})
         except Exception as e:
-            self.logger.error(f"Initialization error: {str(e)}")
-            return f"Error initializing nilRAG: {str(e)}"
+            # Restore stdout in case of exception
+            if 'original_stdout' in locals():
+                try:
+                    sys.stdout.close()
+                except:
+                    pass
+                sys.stdout = original_stdout
+                
+            # self.logger.error(f"Initialization error: {str(e)}")
+            return json.dumps({"status": "error", "message": f"Error initializing nilRAG: {str(e)}"})
 
     async def upload_owner_data(
         self,
@@ -226,7 +243,7 @@ class NilRAGManager:
             await self.initialize()
 
         if not file_path and not file_content:
-            return "Error: Either file_path or file_content must be provided"
+            return json.dumps({"status": "error", "message": "Error: Either file_path or file_content must be provided"})
 
         try:
             # Get paragraphs either from file or direct content
@@ -240,10 +257,10 @@ class NilRAGManager:
 
             # Generate embeddings and chunks
             chunks = create_chunks(paragraphs, chunk_size=chunk_size, overlap=overlap)
-            self.logger.info("Chunks created")
+            # self.logger.info("Chunks created")
 
             embeddings = generate_embeddings_huggingface(chunks)
-            self.logger.info("Embeddings generated")
+            # self.logger.info("Embeddings generated")
 
             # Encrypt chunks and embeddings
             chunks_shares = [nilql.encrypt(self.xor_key, chunk) for chunk in chunks]
@@ -251,7 +268,7 @@ class NilRAGManager:
                 encrypt_float_list(self.additive_key, embedding)
                 for embedding in embeddings
             ]
-            self.logger.info("Data encrypted")
+            # self.logger.info("Data encrypted")
             
             # Upload encrypted data to nilDB
             self.nil_db, _ = load_nil_db_config(
@@ -260,12 +277,17 @@ class NilRAGManager:
                 require_schema_id=True,
             )
             await self.nil_db.upload_data(embeddings_shares, chunks_shares)
-            self.logger.info("Data uploaded to nilDB")
+            # self.logger.info("Data uploaded to nilDB")
 
-            return f"Successfully uploaded {len(chunks)} chunks from {source_type}"
+            return json.dumps({
+                "status": "success", 
+                "message": f"Successfully uploaded {len(chunks)} chunks from {source_type}",
+                "chunks_count": len(chunks),
+                "source": source_type
+            })
         except Exception as e:
-            self.logger.error(f"Upload error: {str(e)}")
-            return f"Error uploading data: {str(e)}"
+            # self.logger.error(f"Upload error: {str(e)}")
+            return json.dumps({"status": "error", "message": f"Error uploading data: {str(e)}"})
 
     async def client_query(
         self,
@@ -307,26 +329,33 @@ class NilRAGManager:
             )
             
             response = self.nil_db.nilai_chat_completion(config)
-            self.logger.info(f"Query completed with response: {response}")
+            # self.logger.info(f"Query completed with response: {response}")
             
             # Extract the response content
             if "choices" in response and len(response["choices"]) > 0:
                 choice = response["choices"][0]
                 if "message" in choice and "content" in choice["message"]:
-                    # Return just the content for a cleaner response
-                    return choice["message"]["content"]
+                    # Return the content in JSON format
+                    return json.dumps({
+                        "status": "success",
+                        "content": choice["message"]["content"],
+                        "model": model
+                    })
 
             # If we can't extract the content, return the full response as JSON
-            return json.dumps(response, indent=2)
+            return json.dumps({
+                "status": "success",
+                "response": response
+            })
         except Exception as e:
-            self.logger.error(f"Query error: {str(e)}")
-            return f"Error querying nilDB: {str(e)}"
+            # self.logger.error(f"Query error: {str(e)}")
+            return json.dumps({"status": "error", "message": f"Error querying nilDB: {str(e)}"})
 
 
 async def serve() -> None:
     """Run the nilRAG MCP server."""
     logger = logging.getLogger(__name__)
-    logger.info("Starting nilRAG MCP server")
+    # logger.info("Starting nilRAG MCP server")
 
     # Create server and manager
     server = Server("mcp-nilrag")
@@ -383,10 +412,10 @@ async def serve() -> None:
                     return [TextContent(type="text", text=result)]
 
                 case _:
-                    return [TextContent(type="text", text=f"Unknown tool: {name}")]
+                    return [TextContent(type="text", text=json.dumps({"status": "error", "message": f"Unknown tool: {name}"}))]
         except Exception as e:
-            logger.error(f"Error calling tool {name}: {str(e)}")
-            return [TextContent(type="text", text=f"Error: {str(e)}")]
+            # logger.error(f"Error calling tool {name}: {str(e)}")
+            return [TextContent(type="text", text=json.dumps({"status": "error", "message": f"Error: {str(e)}"}))]
 
     # Run the server
     options = server.create_initialization_options()
