@@ -1,0 +1,4 @@
+# sample python like pycache, venv, etc
+__pycache__/
+venv/
+nildb_config.json
