@@ -1,21 +1,29 @@
-FROM --platform=linux/amd64 node:20-alpine
+FROM node:20-slim
 
 WORKDIR /app
 
-# Copy package files
-COPY package.json ./
+# Install necessary system dependencies
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy the pre-built node_modules directory
-COPY node_modules/ ./node_modules/
+# Copy package files first for better caching
+COPY package.json package-lock.json* pnpm-lock.yaml* ./
+
+# Install dependencies
+RUN npm install
 
 # Copy application files
-COPY src/ ./src/
-COPY public/ ./public/
-COPY *.json *.js *.ts *.html ./
-COPY .gitignore ./
+COPY . .
+
+# Set environment variables to debug workerd
+ENV NODE_DEBUG=worker
+ENV DEBUG=*
 
 # Expose the Vite dev server port
 EXPOSE 5173
 
-# Command to run the development server
-CMD ["npm", "run", "dev", "--host", "0.0.0.0"]
+# Command to run the development server with host configuration to allow external access
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
