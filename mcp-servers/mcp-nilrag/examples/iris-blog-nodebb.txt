@@ -1,0 +1,108 @@
+Alone we can do so little, together we can do so much” – Helen Keler
+
+Drawing inspiration from various product platforms, IRIS-NodeBB Forum is the gateway to unite all the sections of the NITK student community and build a stronger close-knit peer environment under a community-driven discussion platform. This has been made possible by integrating NodeBB, one of the leading free and open source third-party forum software with IRIS.
+
+Why Forum?
+IRIS-NodeBB Forum has been built to achieve the goal of bringing together the varied passions, knowledge and experience of NITK students under an umbrella medium that would promote sharing of ideas, opinions and suggestions among users. In a world where billions of opportunities and uncertainties exist, this new product serves as the perfect recipe to share and gain perspective, to make one’s college life more fruitful. 
+
+The Forum environment gathers all the alumni, B.Tech, M.Tech, Ph.D, M.Sc and MBA students together, thereby ensuring that the needs and interests of all the community members are met. The long term vision of this product is to enable students to have healthy conversations regarding a wide range of topics such as academics, sports, student activities and clubs, current affairs, career guidance, etc.,.       
+
+Channels
+The first version of Forum has seven channels:
+
+Forum Announcements:
+All the news and updates related to IRIS-NodeBB Forum shall be posted here. Only the forum admins and moderators are permitted to post in this channel. However, the posts can be viewed by all the users of the Forum. It is to be noted that all the official announcements shall be made via IRIS, and not through the Forum.
+
+Academics:
+This channel is dedicated to all the academics-related topics. Students are encouraged to engage in constructive conversations about the degree subjects, course projects, minor degree, honours, etc.
+
+Higher Studies:
+Any discussion related to the planning, application procedures, entrance examinations, choice of university, etc., for post graduate and other higher education programs such as masters, PhD, etc., can be carried out here.
+
+Student Life:
+This channel is meant for conversations regarding student activities such as fests and extra-curricular activities, campus facilities such as hostels, popular tourist hotspots near NITK, leisure activities over the weekend, etc.,. The Lost and Found channel under the “On Campus” section can be used by students to enquire/inform others about any lost item and return it to the concerned person. However, all the users need to ensure that sensitive information such as card numbers from lost ATM/debit cards, etc., are not revealed in the post (Hide the sensitive details suitably while sharing images)
+
+Everything IRIS:
+This channel pertains to anything with respect to IRIS. This is the best avenue for students to actively involve with Team IRIS and make requests and suggestions for improvements and new products. Problems faced by students while using IRIS can be brought up here. The issues raised shall be handled actively by the IRIS Product team.
+
+Hobbies:
+Topics related to one’s interests and hobbies such as coding, automobiles, sports, arts, etc., can be brainstormed and discussed here.
+
+Student Council:
+The Forum also provides an opportunity for students to stay in touch with their elected representatives. Constructive dialog for the betterment and further empowerment of the student community can be carried out here.
+
+Career Opportunities:
+This channel is dedicated to discussions regarding research internships, off-campus internships, and placement opportunities. It provides a platform for students and alumni to share their experiences and resources to help peers and juniors discover and apply for opportunities outside NITK.
+On Boarding
+The Forum module page of IRIS is available under the “Campus” dropdown.
+
+
+Click on the “Forums” button. A page containing all the rules and regulations will be displayed. Read through all the rules, scroll down to the end of the page for completing the registration process. 
+
+
+Mandatorily enter your username (it should consist only of name and initials, and should not consist of your roll number/registration number). You can add a link to your LinkedIn profile. Adding a LinkedIn profile will help like-minded individuals connect with one another. Click on “Create Profile”. Clicking on “Create Profile” implies that you have read all the rules and agree to abide by them. 
+
+
+Using the Forum
+There are 3 types of users:
+
+Forum Administrator:
+The admin will monitor the smooth functioning of the Forum. He/She has the permission to modify inappropriate usernames and warn and ban the users who do not follow the rules and regulations.
+Forum Moderator:
+The moderator is the first point of contact in case of rules violation. He/She will be actively scrutinizing the content being posted and will be responsible to do the needful in case of flagged and objectionable content.
+Community Member:
+By default, all the student users registered to the NodeBB Forum via IRIS are community members. The students are obliged to follow all the rules and regulations, and are free to use the Forum productively.
+Logging In
+Navigate to the “Forum” module page in IRIS (as shown in the On Boarding section). Click on the “Login to Forum” button available in the module menu. A new Forum tab will open.
+
+
+The NodeBB username and LinkedIn profile can be modified at a later point of time as well. However, it must be ensured that the new username satisfies the rules.
+
+The NodeBB Environment
+The home page of NodeBB will appear as shown below:
+
+
+Click on the name of the desired channel to view/post conversation threads. Any objectionable content that has been deleted by the admin or moderator will not be visible to the community members. All the channel threads are visible as shown below:
+
+
+Click on the “New Topic” button to open a new thread. A box opens. Add your content and click on “Submit” to post it.
+
+
+Alternatively, click on any topic to view the related conversation. You can reply to any post by using the reply button, or flag the post or the user in case of any objectionable content using the ellipsis icon (Refer image below)
+
+
+Also, specific users can be tagged in any of the posts using “@”.
+
+Direct Messaging
+The direct messaging/personal messaging feature (DM/PM) is available on the Forum.
+
+Raising Complaints
+To put forward any issues or raise complaints, you can either use the “flag post” or “flag user” option as mentioned above, or write an email to the Forum Admin or Moderator.
+
+Admin email ID: admin-forums@iris.nitk.edu.in
+
+Moderator email ID: moderator-forums@iris.nitk.edu.in
+
+Rules and Regulations
+Please take a minute to acquaint yourself with these important guidelines. It is necessary and important to abide by these rules at all times. 
+
+Your username should only consist of your name and initials if any. Do not include your roll number or registration number in the username. Any other username will be reported to the admin.
+Keep the discussion on topic and civil, and in the correct channels.
+Advertising or self promotion is not allowed. Engage in community discussion
+Do not post copyrighted material.
+Do not post “offensive” content, links or images. The discussions on the forum are meant to stimulate conversation, not to create contention.
+Do not post personal information of any person on this Forum.
+Do not cross post questions or discussion topics i.e. posting the same content on multiple channels. 
+Please refrain from using any language other than English.
+Remain respectful of other members at all times.
+State concisely and clearly the topic of your comments in the subject line. This allows members to respond more appropriately to your posting and makes it easier for members to search the archives by subject.
+Personal attacks or comments on any student/ faculty or institute official will not be tolerated. Topics related to politics, religion, race, ethnicity, sex, sexual orientation, disabilities or any immoral/ illegal practices are not allowed.
+Failure to adhere to the rules will result in a suspension (1 week). Users will be informed about the same by the moderators. Three suspensions will result in a permanent ban. However, in grave instances, moderators and admin have the right to permanently ban the user without imposing a suspension. 
+It shall be noted that the forum is a medium for all the users to express their personal opinion, ideas, suggestions, etc., and IRIS NITK shall not be held responsible and accountable in case of any violation of the code of conduct.
+User Responsibility
+As a member of the community it is important that every user understands his/her responsibility towards other individuals. It is the duty of every member to build an environment on the pillars of trust, politeness and good faith. The Forum is a medium that mutually benefits all the users and hence, it is necessary to uphold the spirit of togetherness always. There is a need for conscious effort from everyone involved to avoid destructive criticism and displeasure. The ultimate goal of this initiative can be achieved only when all the members are comfortable in voicing their queries, suggestions and opinions. 
+
+The Forum is here to stay and ensure collective progress only when we as “responsible community members” understand its immense potential and use it in a smart, sensible manner.
+
+Into the Future . . . 
+Currently, the Forum is open only to the students of NITK. A small but significant step has been taken by introducing a variety of channels.  However, the capabilities of “Community Strength” are boundless. Channels for other topics and domains are in the pipeline. The possibility of opening up the Forum to the other stakeholders of NITK is also being explored.
