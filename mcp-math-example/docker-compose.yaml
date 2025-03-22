@@ -1,0 +1,9 @@
+services:
+  math-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./certs:/certs 

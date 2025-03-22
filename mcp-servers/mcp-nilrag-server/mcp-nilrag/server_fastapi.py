@@ -1,24 +1,21 @@
 """
-MCP Server implementation for nilRAG.
+FastAPI Server implementation for nilRAG.
 """
 
-import asyncio
 import json
 import logging
 import os
 import shutil
+import sys
 from enum import Enum
 from pathlib import Path
 from typing import Optional
 
 import nilql
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
-from mcp.types import (
-    TextContent,
-    Tool,
-)
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import uvicorn
 
 from utils.config import load_nil_db_config
 from utils.nildb_requests import ChatCompletionConfig, NilDB
@@ -33,8 +30,11 @@ from utils.util import (
 # Define Pydantic models for input validation
 class Initialize(BaseModel):
     """Model for initializing nilRAG schema and query."""
-
-    pass  # No parameters needed
+    
+    nilrag_org_secret_key: Optional[str] = None
+    nilrag_org_did: Optional[str] = None
+    nilai_api_token: Optional[str] = None
+    nilai_api_url: Optional[str] = None
 
 
 class UploadOwnerData(BaseModel):
@@ -55,13 +55,15 @@ class ClientQuery(BaseModel):
     max_tokens: int = 2048
 
 
-# Define tool names as enum
-class NilRAGTools(str, Enum):
-    """Enum of available nilRAG tools."""
-
-    INITIALIZE = "initialize"
-    UPLOAD_OWNER_DATA = "upload_owner_data"
-    CLIENT_QUERY = "client_query"
+class ResponseModel(BaseModel):
+    """Model for API responses."""
+    status: str
+    message: Optional[str] = None
+    content: Optional[str] = None
+    chunks_count: Optional[int] = None
+    source: Optional[str] = None
+    model: Optional[str] = None
+    response: Optional[dict] = None
 
 
 # NilRAG functions
@@ -107,10 +109,6 @@ class NilRAGManager:
         """
         # If config file doesn't exist, create it from sample
         if not self.config_path.exists():
-            self.logger.info(
-                f"Config file not found at {self.config_path}, creating from sample"
-            )
-
             # Ensure the directory exists
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -122,11 +120,9 @@ class NilRAGManager:
 
             # Copy the sample config
             shutil.copy2(self.sample_config_path, self.config_path)
-            self.logger.info(f"Created config file from sample at {self.config_path}")
 
         # Update the config with org_secret_key and org_did if provided
         if self.org_secret_key or self.org_did:
-            self.logger.info("Updating config with provided organization credentials")
             with open(self.config_path, "r", encoding="utf-8") as f:
                 config_data = json.load(f)
 
@@ -139,24 +135,24 @@ class NilRAGManager:
             with open(self.config_path, "w", encoding="utf-8") as f:
                 json.dump(config_data, f, indent=4)
 
-            self.logger.info(
-                f"Updated config at {self.config_path} with organization credentials"
-            )
-
         return str(self.config_path)
 
-    async def initialize(self) -> str:
+    async def initialize(self) -> dict:
         """
         Initialize nilRAG schema and query.
 
         Returns:
-            str: Status message
+            dict: Status message
         """
         if self.is_initialized:
-            return "Schema and query already initialized"
+            return {"status": "success", "message": "Schema and query already initialized"}
 
         # Setup config file before loading
         try:
+            # Temporarily redirect stdout to suppress any print statements
+            original_stdout = sys.stdout
+            sys.stdout = open(os.devnull, 'w')
+            
             self.setup_config_file()
 
             # Load NilDB configuration
@@ -178,11 +174,13 @@ class NilRAGManager:
 
             # Initialize schema
             schema_id = await self.nil_db.init_schema()
-            self.logger.info(f"Schema initialized with ID: {schema_id}")
 
             # Initialize query
             diff_query_id = await self.nil_db.init_diff_query()
-            self.logger.info(f"Query initialized with ID: {diff_query_id}")
+
+            # Restore stdout
+            sys.stdout.close()
+            sys.stdout = original_stdout
 
             # Update config file with new IDs and tokens
             with open(self.config_path, "r", encoding="utf-8") as f:
@@ -195,13 +193,17 @@ class NilRAGManager:
                 json.dump(data, f, indent=4)
 
             self.is_initialized = True
-            self.logger.info(
-                "Updated nilDB configuration file with schema and query IDs"
-            )
-            return "Schema and query initialized successfully"
+            return {"status": "success", "message": "Schema and query initialized successfully"}
         except Exception as e:
-            self.logger.error(f"Initialization error: {str(e)}")
-            return f"Error initializing nilRAG: {str(e)}"
+            # Restore stdout in case of exception
+            if 'original_stdout' in locals():
+                try:
+                    sys.stdout.close()
+                except:
+                    pass
+                sys.stdout = original_stdout
+                
+            return {"status": "error", "message": f"Error initializing nilRAG: {str(e)}"}
 
     async def upload_owner_data(
         self,
@@ -209,7 +211,7 @@ class NilRAGManager:
         file_content: Optional[str],
         chunk_size: int,
         overlap: int,
-    ) -> str:
+    ) -> dict:
         """
         Upload data to nilDB using nilRAG.
 
@@ -220,13 +222,13 @@ class NilRAGManager:
             overlap: Number of overlapping words between chunks
 
         Returns:
-            str: Status message
+            dict: Status message
         """
         if not self.is_initialized:
             await self.initialize()
 
         if not file_path and not file_content:
-            return "Error: Either file_path or file_content must be provided"
+            return {"status": "error", "message": "Error: Either file_path or file_content must be provided"}
 
         try:
             # Get paragraphs either from file or direct content
@@ -240,10 +242,8 @@ class NilRAGManager:
 
             # Generate embeddings and chunks
             chunks = create_chunks(paragraphs, chunk_size=chunk_size, overlap=overlap)
-            self.logger.info("Chunks created")
 
             embeddings = generate_embeddings_huggingface(chunks)
-            self.logger.info("Embeddings generated")
 
             # Encrypt chunks and embeddings
             chunks_shares = [nilql.encrypt(self.xor_key, chunk) for chunk in chunks]
@@ -251,7 +251,6 @@ class NilRAGManager:
                 encrypt_float_list(self.additive_key, embedding)
                 for embedding in embeddings
             ]
-            self.logger.info("Data encrypted")
             
             # Upload encrypted data to nilDB
             self.nil_db, _ = load_nil_db_config(
@@ -260,12 +259,15 @@ class NilRAGManager:
                 require_schema_id=True,
             )
             await self.nil_db.upload_data(embeddings_shares, chunks_shares)
-            self.logger.info("Data uploaded to nilDB")
 
-            return f"Successfully uploaded {len(chunks)} chunks from {source_type}"
+            return {
+                "status": "success", 
+                "message": f"Successfully uploaded {len(chunks)} chunks from {source_type}",
+                "chunks_count": len(chunks),
+                "source": source_type
+            }
         except Exception as e:
-            self.logger.error(f"Upload error: {str(e)}")
-            return f"Error uploading data: {str(e)}"
+            return {"status": "error", "message": f"Error uploading data: {str(e)}"}
 
     async def client_query(
         self,
@@ -273,7 +275,7 @@ class NilRAGManager:
         model: str,
         temperature: float,
         max_tokens: int,
-    ) -> str:
+    ) -> dict:
         """
         Query nilDB with NilAI using nilRAG.
 
@@ -284,7 +286,7 @@ class NilRAGManager:
             max_tokens: Maximum tokens to generate
 
         Returns:
-            str: Query response
+            dict: Query response
         """
         if not self.is_initialized:
             await self.initialize()
@@ -307,92 +309,87 @@ class NilRAGManager:
             )
             
             response = self.nil_db.nilai_chat_completion(config)
-            self.logger.info(f"Query completed with response: {response}")
             
             # Extract the response content
             if "choices" in response and len(response["choices"]) > 0:
                 choice = response["choices"][0]
                 if "message" in choice and "content" in choice["message"]:
-                    # Return just the content for a cleaner response
-                    return choice["message"]["content"]
+                    # Return the content in structured format
+                    return {
+                        "status": "success",
+                        "content": choice["message"]["content"],
+                        "model": model
+                    }
 
-            # If we can't extract the content, return the full response as JSON
-            return json.dumps(response, indent=2)
+            # If we can't extract the content, return the full response
+            return {
+                "status": "success",
+                "response": response
+            }
         except Exception as e:
-            self.logger.error(f"Query error: {str(e)}")
-            return f"Error querying nilDB: {str(e)}"
+            return {"status": "error", "message": f"Error querying nilDB: {str(e)}"}
 
 
-async def serve() -> None:
-    """Run the nilRAG MCP server."""
-    logger = logging.getLogger(__name__)
-    logger.info("Starting nilRAG MCP server")
+# Create FastAPI app
+app = FastAPI(
+    title="NilRAG API",
+    description="API for nilRAG operations using FastAPI",
+    version="1.0.0",
+)
 
-    # Create server and manager
-    server = Server("mcp-nilrag")
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Can be set to specific origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Create manager instance
+manager = NilRAGManager()
+
+@app.post("/initialize", response_model=ResponseModel)
+async def initialize_endpoint(init_data: Initialize = Initialize()):
+    """Initialize nilRAG schema and query."""
+    # Update environment variables with provided values
+    if init_data.nilrag_org_secret_key:
+        os.environ["NILRAG_ORG_SECRET_KEY"] = init_data.nilrag_org_secret_key
+    if init_data.nilrag_org_did:
+        os.environ["NILRAG_ORG_DID"] = init_data.nilrag_org_did
+    if init_data.nilai_api_token:
+        os.environ["NILAI_API_TOKEN"] = init_data.nilai_api_token
+    if init_data.nilai_api_url:
+        os.environ["NILAI_API_URL"] = init_data.nilai_api_url
+        
+    # Create a new manager with the updated environment variables
+    global manager
     manager = NilRAGManager()
+    
+    result = await manager.initialize()
+    return result
 
-    @server.list_tools()
-    async def list_tools() -> list[Tool]:
-        """List available tools."""
-        return [
-            Tool(
-                name=NilRAGTools.INITIALIZE,
-                description="Initialize nilRAG schema and query",
-                inputSchema=Initialize.model_json_schema(),
-            ),
-            Tool(
-                name=NilRAGTools.UPLOAD_OWNER_DATA,
-                description="Upload data to nilDB",
-                inputSchema=UploadOwnerData.model_json_schema(),
-            ),
-            Tool(
-                name=NilRAGTools.CLIENT_QUERY,
-                description="Query nilDB with NilAI using nilRAG for a specific prompt/query",
-                inputSchema=ClientQuery.model_json_schema(),
-            ),
-        ]
+@app.post("/upload", response_model=ResponseModel)
+async def upload_endpoint(data: UploadOwnerData):
+    """Upload data to nilDB."""
+    result = await manager.upload_owner_data(
+        file_path=data.file_path,
+        file_content=data.file_content,
+        chunk_size=data.chunk_size,
+        overlap=data.overlap,
+    )
+    return result
 
-    @server.call_tool()
-    async def call_tool(name: str, arguments: dict) -> list[TextContent]:
-        """Call a nilRAG tool."""
-        try:
-            match name:
-                case NilRAGTools.INITIALIZE:
-                    result = await manager.initialize()
-                    return [TextContent(type="text", text=result)]
-
-                case NilRAGTools.UPLOAD_OWNER_DATA:
-                    result = await manager.upload_owner_data(
-                        file_path=arguments.get("file_path"),
-                        file_content=arguments.get("file_content"),
-                        chunk_size=arguments.get("chunk_size", 50),
-                        overlap=arguments.get("overlap", 10),
-                    )
-                    return [TextContent(type="text", text=result)]
-
-                case NilRAGTools.CLIENT_QUERY:
-                    result = await manager.client_query(
-                        prompt=arguments["prompt"],
-                        model=arguments.get(
-                            "model", "meta-llama/Llama-3.1-8B-Instruct"
-                        ),
-                        temperature=arguments.get("temperature", 0.2),
-                        max_tokens=arguments.get("max_tokens", 2048),
-                    )
-                    return [TextContent(type="text", text=result)]
-
-                case _:
-                    return [TextContent(type="text", text=f"Unknown tool: {name}")]
-        except Exception as e:
-            logger.error(f"Error calling tool {name}: {str(e)}")
-            return [TextContent(type="text", text=f"Error: {str(e)}")]
-
-    # Run the server
-    options = server.create_initialization_options()
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(read_stream, write_stream, options, raise_exceptions=True)
-
+@app.post("/query", response_model=ResponseModel)
+async def query_endpoint(query: ClientQuery):
+    """Query nilDB with NilAI."""
+    result = await manager.client_query(
+        prompt=query.prompt,
+        model=query.model,
+        temperature=query.temperature,
+        max_tokens=query.max_tokens,
+    )
+    return result
 
 if __name__ == "__main__":
     # Configure logging
@@ -400,5 +397,6 @@ if __name__ == "__main__":
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-
-    asyncio.run(serve())
+    
+    # Run the FastAPI app
+    uvicorn.run(app, host="0.0.0.0", port=8000)

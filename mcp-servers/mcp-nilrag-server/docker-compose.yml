@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  nilrag-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"  # FastAPI port
+      - "5173:5173"  # TypeScript Vite dev server port
+    environment:
+      - NILRAG_ORG_SECRET_KEY=b74b05573bd2f0ab32384b798b1897f99364ec7e5a1cfd75e43f5dadd6ea8938
+      - NILRAG_ORG_DID=did:nil:testnet:nillion16rg02vlv0d0ch8ynv4v7n5kuca09hrxwtzy9cv
+      - NILAI_API_TOKEN=Nillion2025
+      - NILAI_API_URL=https://nilai-a779.nillion.network
+      - NILRAG_API_URL=http://localhost:8000
+    volumes:
+      - ./mcp-nilrag:/app/mcp-nilrag
+      - ./mcp-nilrag-remote:/app/mcp-nilrag-remote
+      - /app/mcp-nilrag-remote/node_modules
+      - /app/mcp-nilrag/.venv
+    tty: true
+    stdin_open: true 
