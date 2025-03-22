@@ -1,9 +1,34 @@
+version: '3'
+
 services:
-  math-mcp:
+  app:
     build:
       context: .
       dockerfile: Dockerfile
-    network_mode: host
     restart: unless-stopped
     volumes:
-      - ./certs:/certs 
+      - ./:/app
+      - /app/node_modules
+    networks:
+      - caddy_network
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - caddy_network
+
+networks:
+  caddy_network:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config: 

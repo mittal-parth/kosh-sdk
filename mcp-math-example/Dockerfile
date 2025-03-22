@@ -14,7 +14,7 @@ COPY package.json package-lock.json* pnpm-lock.yaml* ./
 # Install dependencies
 RUN npm install
 
-# Copy application files
+# Copy application files - AFTER .dockerignore excludes node_modules
 COPY . .
 
 # Set environment variables to debug workerd
@@ -25,4 +25,4 @@ COPY . .
 EXPOSE 5173
 
 # Command to run the development server with host configuration to allow external access
-CMD ["npm", "run", "dev", "--host", "0.0.0.0"]
+CMD ["npm", "run", "dev"]
