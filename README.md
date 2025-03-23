@@ -1,111 +1,110 @@
-# Kosh SDK - TEE-based Tool Service for LLMs
+# Kosh - Secure Tool Services Platform for LLMs using TEEs
 
-A comprehensive SDK for deploying Trusted Execution Environment (TEE)-based tool services for Large Language Models (LLMs) using the MCP protocol.
+A comprehensive platform for deploying Trusted Execution Environment (TEE)-based tool services for Large Language Models (LLMs) using the MCP (Model Control Protocol).
 
 ## Overview
 
-Kosh SDK provides a seamless solution for deploying secure tool services for LLMs in a Trusted Execution Environment. It handles the entire infrastructure, including hosting and request routing, while ensuring secure deployment and execution.
+Kosh provides a seamless solution for deploying secure tool services for LLMs in a Trusted Execution Environment. It handles infrastructure for hosting and request routing while ensuring secure deployment and execution through Nillion and Merlin TEE technologies.
 
-## Architecture
+## Components
 
-### Components
+The project consists of two main parts:
 
-1. **Kosh Server (TEE-based)**
-   - Deployed on Marlin Network
-   - Handles secure execution of tools
-   - Manages request routing and authentication
-   - Implements MCP protocol for tool communication
+### Frontend
 
-2. **Kosh Client SDK**
-   - Python-based SDK for easy integration
-   - Provides high-level abstractions for tool deployment
-   - Handles communication with the TEE server
-   - Manages authentication and request signing
+The Kosh frontend provides a user interface for interacting with the various MCP services. It offers:
 
-3. **SecretLLM Integration**
-   - Optional secure LLM deployment
-   - Seamless integration with TEE environment
-   - Secure model serving capabilities
+- Service configuration and management dashboard
+- Real-time monitoring of MCP service activity
+- User authentication and access control
+- Integration with TEE secure environments
 
-### Tech Stack
+### MCP Services
 
-- **Backend**: Python, FastAPI
-- **TEE**: Marlin Network
-- **Protocol**: MCP (Model Control Protocol)
-- **Security**: TEE-based execution, request signing
-- **Optional**: SecretLLM for secure model serving
+Kosh includes four main MCP services:
 
-## Getting Started
+1. **MCP Brave** - MCP server for integration with Brave browser
+2. **MCP Slack** - MCP server for Slack integration
+3. **MCP GitHub** - MCP server for GitHub integration
+4. **MCP Nilrag** - Core MCP server providing secure computation capabilities
+
+## Setup and Configuration
+
+### MCP Client Configuration
+
+To add Kosh services to your MCP client (e.g., Claude), use the following configuration:
+
+```json
+{
+  "mcpServers": {
+    "nilrag-brave": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "https://dadc-2409-40f2-15a-d04a-ec2f-ff68-c1e7-5a5c.ngrok-free.app/mcp"
+      ]
+    }
+  }
+}
+```
+
+This configuration should be added to your MCP client's configuration file.
 
 ### Prerequisites
 
-- Python 3.8+
-- Marlin Network account
-- (Optional) SecretLLM setup
+- Node.js 16+ and npm
+- Python 3.11+ (for some components)
+- Docker and Docker Compose (for containerized deployment)
 
 ### Installation
 
+1. Clone the repository:
 ```bash
-pip install kosh-sdk
+git clone https://github.com/yourusername/kosh.git
+cd kosh
 ```
 
-### Basic Usage
-
-1. **Define Your Tool**
-
-```python
-from kosh_sdk import Tool, ToolService
-
-class MyTool(Tool):
-    def __init__(self):
-        super().__init__(
-            name="my_tool",
-            description="Description of my tool",
-            version="1.0.0"
-        )
-    
-    async def execute(self, params):
-        # Your tool logic here
-        return {"result": "tool output"}
-
-# Create and deploy your tool service
-service = ToolService(
-    tools=[MyTool()],
-    marlin_config={
-        "network": "mainnet",
-        "account": "your_account"
-    }
-)
-
-# Deploy to Marlin Network
-service.deploy()
+2. Install dependencies for the frontend:
+```bash
+cd frontend
+npm install
 ```
 
-2. **Client Usage**
+3. Install dependencies for each service as needed.
 
-```python
-from kosh_sdk import KoshClient
-
-client = KoshClient(
-    service_url="your_service_url",
-    api_key="your_api_key"
-)
-
-# Execute tool
-result = await client.execute_tool(
-    tool_name="my_tool",
-    params={"param1": "value1"}
-)
+4. Start the frontend development server:
+```bash
+npm run dev
 ```
 
 ## Security Features
 
-- TEE-based execution environment
-- Request signing and verification
+### Trusted Execution Environments (TEEs)
+
+Kosh leverages TEEs to provide secure computation environments where sensitive data remains protected even during processing. The implementation uses:
+
+- **Nillion** - A secure computation network that decentralizes trust for high-value data
+- **Merlin** - Advanced TEE technology providing isolated execution environments
+
+This combination ensures:
+- Data privacy during computation
 - Secure parameter handling
-- Rate limiting and access control
+- Protection against side-channel attacks
+- Tamper-proof execution environments
+
+## Project Structure
+
+- `/frontend` - User interface for service management and monitoring
+- `/mcp-servers` - Contains the four MCP server implementations
+- `/common` - Shared utilities and libraries
+- `/operations` - Operational tools and scripts
+- `/marlin` - Integration with Marlin Network for TEE capabilities
 
 ## License
 
 MIT License - See LICENSE file for details
+
+## Support
+
+For more information about Nillion and secure TEE-based development, visit [Nillion Documentation](https://docs.nillion.com/).
 
