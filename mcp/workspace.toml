@@ -1,7 +1,0 @@
-[workspace]
-members = ["weather-mcp"]
-
-[workspace.dependencies]
-httpx = ">=0.28.1"
-fastmcp = ">=0.3.0"
-pydantic = ">=2.0.0" 
