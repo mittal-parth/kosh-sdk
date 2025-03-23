@@ -34,6 +34,11 @@ So imagine a scenario like this which can be built with just a few clicks:
 
 All of this being secure and private.
 
+### 💻 Flow Diagram
+![Screenshot 2025-03-23 at 8 05 06 PM](https://github.com/user-attachments/assets/6e5a837d-d4e5-4292-86f1-ad85e85ce5bd)
+
+
+
 ## 🛠️ Local Setup and Configuration
 
 ### Prerequisites
