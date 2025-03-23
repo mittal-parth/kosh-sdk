@@ -287,331 +287,174 @@ export class MCPClient {
       },
     ];
 
+    const finalText: string[] = [];
+
     try {
-      // Initial Claude API call
-      const response = await this.anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
-        max_tokens: 1000,
-        messages,
-        tools: this.tools,
-      });
-
-      // Process response and handle tool calls
-      const finalText: string[] = [];
-
-      for (const content of response.content) {
-        if (content.type === "text") {
-          finalText.push(content.text);
-        } else if (content.type === "tool_use") {
-          const toolName = content.name;
-          const toolArgs = content.input as Record<string, unknown>;
-          const toolUseId = content.id;
-
-          // Log the tool call in the UI
-          finalText.push(`🔧 Using tool: ${toolName}`);
-
-          try {
-            // Add retry mechanism for tool calls
-            let retries = 2; // Maximum 3 attempts (initial + 2 retries)
-            let result;
-            let lastError;
-
-            while (retries >= 0) {
-              try {
-                result = await this.mcp.callTool({
-                  name: toolName,
-                  arguments: toolArgs,
-                });
-                break; // Success, exit the retry loop
-              } catch (error) {
-                lastError = error;
-                console.warn(
-                  `Tool call attempt failed (${2 - retries}/2): ${toolName}`,
-                  error
-                );
-
-                if (retries > 0) {
-                  // Wait before retrying (exponential backoff)
-                  await new Promise((resolve) =>
-                    setTimeout(resolve, 1000 * Math.pow(2, 2 - retries))
-                  );
-                }
-                retries--;
-              }
-            }
-
-            // If all retries failed, throw the last error
-            if (!result) {
-              throw lastError;
-            }
-
-            // Add the tool result message - constructing proper message format
-            let toolResponse = "";
-            if (typeof result.content === "string") {
-              toolResponse = result.content;
-            } else if (
-              result.content !== null &&
-              typeof result.content === "object"
-            ) {
-              // Format the object as JSON string with indentation for better readability
-              try {
-                // Handle both arrays and objects consistently
-                if (Array.isArray(result.content)) {
-                  // For arrays, determine if it's a simple array or contains complex objects
-                  const isSimpleArray = result.content.every(
-                    (item) => typeof item !== "object" || item === null
-                  );
-
-                  if (isSimpleArray && result.content.length < 10) {
-                    // For small simple arrays, use a compact format
-                    toolResponse = JSON.stringify(result.content);
-                  } else {
-                    // For complex or larger arrays, use indented format
-                    toolResponse = JSON.stringify(result.content, null, 2);
-                  }
-                } else {
-                  // For objects, always use indented format
-                  toolResponse = JSON.stringify(result.content, null, 2);
-                }
-              } catch (err) {
-                toolResponse = `[Complex object: ${Object.prototype.toString.call(
-                  result.content
-                )}]`;
-              }
-            } else if (result.content === null) {
-              toolResponse = "null";
-            } else if (result.content === undefined) {
-              toolResponse = "undefined";
-            } else {
-              // Handle other primitive types
-              toolResponse = String(result.content);
-            }
-
-            finalText.push(`📊 Tool result: \n${toolResponse}`);
-
-            // Add the assistant's tool use message
-            messages.push({
-              role: "assistant",
-              content: [
-                {
-                  type: "tool_use",
-                  id: toolUseId,
-                  name: toolName,
-                  input: toolArgs,
-                },
-              ],
-            });
-
-            // Add the tool result message
-            messages.push({
-              role: "user",
-              content: [
-                {
-                  type: "tool_result",
-                  tool_use_id: toolUseId,
-                  content: toolResponse,
-                },
-              ],
-            });
-
-            // Get the next response from Claude with the tool result
-            const followUpResponse = await this.anthropic.messages.create({
-              model: "claude-3-5-sonnet-20241022",
-              max_tokens: 1000,
-              messages,
-              tools: this.tools,
-            });
-
-            // Add follow-up response to final text and process any additional tool calls
-            for (const content of followUpResponse.content) {
-              if (content.type === "text") {
-                finalText.push(content.text);
-              } else if (content.type === "tool_use") {
-                // Recursively process the next tool call
-                const nestedToolName = content.name;
-                const nestedToolArgs = content.input as Record<string, unknown>;
-                const nestedToolUseId = content.id;
-                
-                // Log the nested tool call in the UI
-                finalText.push(`🔧 Using tool: ${nestedToolName}`);
-                
-                try {
-                  // Add retry mechanism for nested tool calls
-                  let retries = 2; // Maximum 3 attempts (initial + 2 retries)
-                  let nestedResult;
-                  let lastError;
-                  
-                  while (retries >= 0) {
-                    try {
-                      nestedResult = await this.mcp.callTool({
-                        name: nestedToolName,
-                        arguments: nestedToolArgs,
-                      });
-                      break; // Success, exit the retry loop
-                    } catch (error) {
-                      lastError = error;
-                      console.warn(
-                        `Nested tool call attempt failed (${2 - retries}/2): ${nestedToolName}`,
-                        error
-                      );
-                      
-                      if (retries > 0) {
-                        // Wait before retrying (exponential backoff)
-                        await new Promise((resolve) =>
-                          setTimeout(resolve, 1000 * Math.pow(2, 2 - retries))
-                        );
-                      }
-                      retries--;
-                    }
-                  }
-                  
-                  // If all retries failed, throw the last error
-                  if (!nestedResult) {
-                    throw lastError;
-                  }
-                  
-                  // Process the nested tool result
-                  let nestedToolResponse = "";
-                  if (typeof nestedResult.content === "string") {
-                    nestedToolResponse = nestedResult.content;
-                  } else if (
-                    nestedResult.content !== null &&
-                    typeof nestedResult.content === "object"
-                  ) {
-                    // Format the object as JSON string for better readability
-                    try {
-                      if (Array.isArray(nestedResult.content)) {
-                        const isSimpleArray = nestedResult.content.every(
-                          (item) => typeof item !== "object" || item === null
-                        );
-                        
-                        if (isSimpleArray && nestedResult.content.length < 10) {
-                          nestedToolResponse = JSON.stringify(nestedResult.content);
-                        } else {
-                          nestedToolResponse = JSON.stringify(nestedResult.content, null, 2);
-                        }
-                      } else {
-                        nestedToolResponse = JSON.stringify(nestedResult.content, null, 2);
-                      }
-                    } catch (err) {
-                      nestedToolResponse = `[Complex object: ${Object.prototype.toString.call(
-                        nestedResult.content
-                      )}]`;
-                    }
-                  } else if (nestedResult.content === null) {
-                    nestedToolResponse = "null";
-                  } else if (nestedResult.content === undefined) {
-                    nestedToolResponse = "undefined";
-                  } else {
-                    nestedToolResponse = String(nestedResult.content);
-                  }
-                  
-                  finalText.push(`📊 Tool result: \n${nestedToolResponse}`);
-                  
-                  // Add the assistant's nested tool use message
-                  messages.push({
-                    role: "assistant",
-                    content: [
-                      {
-                        type: "tool_use",
-                        id: nestedToolUseId,
-                        name: nestedToolName,
-                        input: nestedToolArgs,
-                      },
-                    ],
-                  });
-                  
-                  // Add the nested tool result message
-                  messages.push({
-                    role: "user",
-                    content: [
-                      {
-                        type: "tool_result",
-                        tool_use_id: nestedToolUseId,
-                        content: nestedToolResponse,
-                      },
-                    ],
-                  });
-                  
-                  // Get another follow-up response from Claude with the nested tool result
-                  const nestedFollowUpResponse = await this.anthropic.messages.create({
-                    model: "claude-3-5-sonnet-20241022",
-                    max_tokens: 1000,
-                    messages,
-                    tools: this.tools,
-                  });
-                  
-                  // Process the nested follow-up response - just add the text parts
-                  for (const content of nestedFollowUpResponse.content) {
-                    if (content.type === "text") {
-                      finalText.push(content.text);
-                    }
-                    // Note: We don't handle deeper nested calls here to avoid excessive recursion
-                    // If more depth is needed, consider implementing a full recursive approach
-                  }
-                } catch (error) {
-                  console.error(`Error calling nested tool ${nestedToolName}:`, error);
-                  const errorMessage =
-                    error instanceof Error ? error.message : String(error);
-                  finalText.push(
-                    `❌ Error calling tool ${nestedToolName}: ${errorMessage}`
-                  );
-                  
-                  // Inform the model about the error and continue
-                  messages.push({
-                    role: "user",
-                    content: `Error using tool ${nestedToolName}: ${errorMessage}. Please continue without this tool.`,
-                  });
-                  
-                  const nestedErrorFollowUpResponse = await this.anthropic.messages.create({
-                    model: "claude-3-5-sonnet-20241022",
-                    max_tokens: 1000,
-                    messages,
-                  });
-                  
-                  for (const content of nestedErrorFollowUpResponse.content) {
-                    if (content.type === "text") {
-                      finalText.push(content.text);
-                    }
-                  }
-                }
-              }
-            }
-          } catch (error) {
-            console.error(`Error calling tool ${toolName}:`, error);
-            const errorMessage =
-              error instanceof Error ? error.message : String(error);
-            finalText.push(
-              `❌ Error calling tool ${toolName}: ${errorMessage}`
-            );
-
-            // Inform the model about the error and continue
-            messages.push({
-              role: "user",
-              content: `Error using tool ${toolName}: ${errorMessage}. Please continue without this tool.`,
-            });
-
-            const errorFollowUpResponse = await this.anthropic.messages.create({
-              model: "claude-3-5-sonnet-20241022",
-              max_tokens: 1000,
-              messages,
-            });
-
-            for (const content of errorFollowUpResponse.content) {
-              if (content.type === "text") {
-                finalText.push(content.text);
-              }
-            }
-          }
-        }
-      }
-
+      // Process the query using a recursive approach to handle tool calls
+      await this.processToolChain(messages, finalText);
       return finalText.join("\n\n");
     } catch (error) {
       console.error("Error processing query:", error);
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       return `Error processing your query: ${errorMessage}`;
+    }
+  }
+
+  // Recursive method to handle arbitrary chains of tool calls
+  private async processToolChain(messages: MessageParam[], finalText: string[], depth: number = 0, maxDepth: number = 10) {
+    // Safety check to prevent infinite recursion
+    if (depth >= maxDepth) {
+      finalText.push(`⚠️ Maximum tool call depth (${maxDepth}) reached. Some operations may be incomplete.`);
+      return;
+    }
+
+    // Call Claude API with current messages and tools
+    const response = await this.anthropic.messages.create({
+      model: "claude-3-5-sonnet-20241022",
+      max_tokens: 1000,
+      messages,
+      tools: this.tools,
+    });
+
+    // Process each content item in the response
+    for (const content of response.content) {
+      if (content.type === "text") {
+        // For text content, add it to the final output
+        finalText.push(content.text);
+      } else if (content.type === "tool_use") {
+        // For tool use, process the tool call
+        const toolName = content.name;
+        const toolArgs = content.input as Record<string, unknown>;
+        const toolUseId = content.id;
+
+        // Log the tool call in the UI
+        finalText.push(`🔧 Using tool: ${toolName}`);
+
+        try {
+          // Call the tool with retry logic
+          const result = await this.callToolWithRetry(toolName, toolArgs);
+          
+          // Format the tool response for display
+          const toolResponse = this.formatToolResponse(result.content);
+          finalText.push(`📊 Tool result: \n${toolResponse}`);
+
+          // Add the tool use and result to the conversation history
+          messages.push({
+            role: "assistant",
+            content: [
+              {
+                type: "tool_use",
+                id: toolUseId,
+                name: toolName,
+                input: toolArgs,
+              },
+            ],
+          });
+
+          messages.push({
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: toolUseId,
+                content: toolResponse,
+              },
+            ],
+          });
+
+          // Recursively process the next set of messages (handling nested tool calls)
+          await this.processToolChain(messages, finalText, depth + 1, maxDepth);
+        } catch (error) {
+          // Handle tool call errors
+          console.error(`Error calling tool ${toolName}:`, error);
+          const errorMessage =
+            error instanceof Error ? error.message : String(error);
+          finalText.push(
+            `❌ Error calling tool ${toolName}: ${errorMessage}`
+          );
+
+          // Inform the model about the error and continue
+          messages.push({
+            role: "user",
+            content: `Error using tool ${toolName}: ${errorMessage}. Please continue without this tool.`,
+          });
+
+          // Recursively process with the error message added
+          await this.processToolChain(messages, finalText, depth + 1, maxDepth);
+        }
+      }
+    }
+  }
+
+  // Helper method to call a tool with retry logic
+  private async callToolWithRetry(toolName: string, toolArgs: Record<string, unknown>, maxRetries: number = 2) {
+    let retries = maxRetries;
+    let lastError;
+
+    while (retries >= 0) {
+      try {
+        const result = await this.mcp.callTool({
+          name: toolName,
+          arguments: toolArgs,
+        });
+        return result; // Success, return the result
+      } catch (error) {
+        lastError = error;
+        console.warn(
+          `Tool call attempt failed (${maxRetries - retries}/${maxRetries}): ${toolName}`,
+          error
+        );
+
+        if (retries > 0) {
+          // Wait before retrying (exponential backoff)
+          await new Promise((resolve) =>
+            setTimeout(resolve, 1000 * Math.pow(2, maxRetries - retries))
+          );
+        }
+        retries--;
+      }
+    }
+
+    // If all retries failed, throw the last error
+    throw lastError;
+  }
+
+  // Helper method to format tool responses for display
+  private formatToolResponse(content: any): string {
+    if (typeof content === "string") {
+      return content;
+    } else if (content !== null && typeof content === "object") {
+      // Format the object as JSON string with indentation for better readability
+      try {
+        // Handle both arrays and objects consistently
+        if (Array.isArray(content)) {
+          // For arrays, determine if it's a simple array or contains complex objects
+          const isSimpleArray = content.every(
+            (item) => typeof item !== "object" || item === null
+          );
+
+          if (isSimpleArray && content.length < 10) {
+            // For small simple arrays, use a compact format
+            return JSON.stringify(content);
+          } else {
+            // For complex or larger arrays, use indented format
+            return JSON.stringify(content, null, 2);
+          }
+        } else {
+          // For objects, always use indented format
+          return JSON.stringify(content, null, 2);
+        }
+      } catch (err) {
+        return `[Complex object: ${Object.prototype.toString.call(content)}]`;
+      }
+    } else if (content === null) {
+      return "null";
+    } else if (content === undefined) {
+      return "undefined";
+    } else {
+      // Handle other primitive types
+      return String(content);
     }
   }
 
