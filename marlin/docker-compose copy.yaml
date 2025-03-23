@@ -1,0 +1,5 @@
+services:
+  math-mcp:
+    image: abhirajmengade/math-mcp:latest
+    network_mode: host
+    restart: unless-stopped

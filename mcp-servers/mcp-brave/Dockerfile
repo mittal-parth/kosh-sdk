@@ -32,5 +32,5 @@ COPY . .
 # Expose the Vite dev server port
 EXPOSE 5173
 
-# Set up entrypoint command to run both the dev server and ngrok
-ENTRYPOINT ["/bin/bash", "-c", "npm run dev --host 0.0.0.0 & sleep 5 && ngrok config add-authtoken 2ugDqNABZVd7wTIxcZ0lgbYa0Ru_6we24FwNijmvx5bPRSpEx && ngrok http 5173"]
+# Simplified entrypoint just using the ngrok token from environment
+ENTRYPOINT ["/bin/bash", "-c", "npm run dev --host 0.0.0.0 & sleep 5 && ngrok config add-authtoken $NGROK_AUTHTOKEN && ngrok http 5173"]

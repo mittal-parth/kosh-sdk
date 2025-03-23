@@ -1,0 +1,12 @@
+{
+    # Global options
+    http_port 80
+    https_port 443
+    # For local development, disable automatic HTTPS since we're using internal TLS
+    auto_https disable_redirects
+}
+
+localhost, 127.0.0.1 {
+    tls internal
+    reverse_proxy localhost:5173
+}

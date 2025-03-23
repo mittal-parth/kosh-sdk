@@ -1,5 +1,25 @@
 services:
-  math-mcp:
-    image: abhirajmengade/math-mcp:latest
+  # github-mcp:
+  #   image: abhirajmengade/github-mcp:latest
+  #   network_mode: host
+  #   env_file:
+  #     - ./.env  # Path to your env file
+  #   restart: unless-stopped
+  brave-mcp:
+    image: abhirajmengade/brave-mcp:latest
     network_mode: host
+    env_file:
+      - ./.env
     restart: unless-stopped
+  # slack-mcp:
+  #   image: abhirajmengade/slack-mcp:latest
+  #   network_mode: host
+  #   env_file:
+  #     - ./.env
+  #   restart: unless-stopped
+  # nilrag-mcp:
+  #   image: abhirajmengade/nilrag-mcp:latest
+  #   network_mode: host
+  #   env_file:
+  #     - ./.env
+  #   restart: unless-stopped
