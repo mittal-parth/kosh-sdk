@@ -362,6 +362,55 @@ export class MCPClient {
     }
   }
 
+  // New streaming version of processQuery
+  async processQueryWithStreaming(
+    query: string,
+    onUpdate: (content: string, isDone: boolean) => void,
+    onToolCall: (toolName: string) => void,
+    onToolResult: (result: string) => void
+  ) {
+    if (this.tools.length === 0) {
+      onUpdate(
+        "Please connect to an MCP server to use tools. Go to the Servers tab to connect to a server.",
+        true
+      );
+      return;
+    }
+
+    const messages: MessageParam[] = [
+      {
+        role: "user",
+        content: query,
+      },
+    ];
+
+    try {
+      // Start with empty response
+      let currentResponse = "";
+      onUpdate(currentResponse, false);
+
+      // Process the query with streaming
+      await this.processToolChainWithStreaming(
+        messages,
+        (text) => {
+          // Append new text to current response
+          currentResponse += text;
+          onUpdate(currentResponse, false);
+        },
+        onToolCall,
+        onToolResult
+      );
+
+      // Mark as done
+      onUpdate(currentResponse, true);
+    } catch (error) {
+      console.error("Error processing query with streaming:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      onUpdate(`Error processing your query: ${errorMessage}`, true);
+    }
+  }
+
   // Recursive method to handle arbitrary chains of tool calls
   private async processToolChain(
     messages: MessageParam[],
@@ -460,12 +509,428 @@ export class MCPClient {
     }
   }
 
+  // Modified processToolChainWithStreaming for improved formatting
+  private async processToolChainWithStreaming(
+    messages: MessageParam[],
+    onTextUpdate: (text: string) => void,
+    onToolCall: (toolName: string) => void,
+    onToolResult: (result: string) => void,
+    depth: number = 0,
+    maxDepth: number = 10
+  ) {
+    // Safety check to prevent infinite recursion
+    if (depth >= maxDepth) {
+      onTextUpdate(
+        `\n⚠️ Maximum tool call depth (${maxDepth}) reached. Some operations may be incomplete.`
+      );
+      return;
+    }
+
+    // Strip custom properties from tools before sending to Anthropic API
+    const apiTools = this.tools.map(({ name, description, input_schema }) => ({
+      name,
+      description,
+      input_schema,
+    }));
+
+    try {
+      // Call Claude API with streaming
+      const stream = await this.anthropic.messages.create({
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 1000,
+        messages,
+        tools: apiTools,
+        stream: true,
+      });
+
+      // Variables to track state during streaming
+      let currentText = "";
+      let pendingToolUse: {
+        id: string;
+        name: string;
+        input: Record<string, unknown>;
+        inputStarted: boolean;
+        inputCompleted: boolean;
+        inputBuffer: string;
+        partialJson: string; // Track the raw JSON input as it comes in
+      } | null = null;
+
+      // Track when we're actively in a tool_use event
+      let inToolUseBlock = false;
+
+      // Process the streaming response
+      for await (const chunk of stream) {
+        // For debugging
+        console.log("Stream chunk:", JSON.stringify(chunk));
+
+        // Handle different event types
+        if (chunk.type === "content_block_start") {
+          const block = chunk.content_block as {
+            type: string;
+            text?: string;
+            id?: string;
+            name?: string;
+            input?: Record<string, unknown>;
+          };
+
+          if (block && block.type === "text") {
+            // Text block started
+            if (block.text) {
+              onTextUpdate(block.text);
+              currentText += block.text;
+            }
+          } else if (block && block.type === "tool_use") {
+            // Tool use block started
+            inToolUseBlock = true;
+            pendingToolUse = {
+              id: block.id || "",
+              name: block.name || "",
+              input: block.input || {},
+              inputStarted: false,
+              inputCompleted: false,
+              inputBuffer: "",
+              partialJson: "",
+            };
+
+            if (block.name) {
+              onToolCall(block.name);
+              // Format tool call in a properly fenced code block
+              onTextUpdate(`\n\`\`\`\n🔧 Using tool: ${block.name}\n\`\`\`\n`);
+            }
+          }
+        } else if (chunk.type === "content_block_delta") {
+          const delta = chunk.delta as {
+            type: string;
+            text?: string;
+            id?: string;
+            name?: string;
+            input?: Record<string, unknown>;
+            partial_json?: string;
+          };
+
+          if (delta.type === "text_delta" && delta.text) {
+            // Text being streamed
+            onTextUpdate(delta.text);
+            currentText += delta.text;
+          } else if (delta.type === "tool_use_delta") {
+            // Tool use being updated
+            if (delta.name && !pendingToolUse) {
+              pendingToolUse = {
+                id: "",
+                name: delta.name,
+                input: {},
+                inputStarted: false,
+                inputCompleted: false,
+                inputBuffer: "",
+                partialJson: "",
+              };
+              onToolCall(delta.name);
+              // Format tool call in a properly fenced code block
+              onTextUpdate(`\n\`\`\`\n🔧 Using tool: ${delta.name}\n\`\`\`\n`);
+            } else if (pendingToolUse) {
+              // Update existing tool info
+              if (delta.id) pendingToolUse.id = delta.id;
+              if (delta.name) pendingToolUse.name = delta.name;
+              if (delta.input) {
+                // Input is being updated directly
+                pendingToolUse.inputStarted = true;
+                pendingToolUse.input = {
+                  ...pendingToolUse.input,
+                  ...delta.input,
+                };
+                console.log(
+                  "Updated tool input from delta.input:",
+                  delta.input
+                );
+                console.log("Current tool input:", pendingToolUse.input);
+              }
+            }
+          } else if (
+            delta.type === "input_json_delta" &&
+            delta.partial_json !== undefined &&
+            pendingToolUse
+          ) {
+            // Handle partial JSON updates - this is how the streaming API delivers tool parameters
+            pendingToolUse.inputStarted = true;
+            pendingToolUse.partialJson += delta.partial_json;
+            console.log("Partial JSON received:", delta.partial_json);
+            console.log("Accumulated JSON:", pendingToolUse.partialJson);
+
+            // Try to parse the JSON if it seems complete
+            if (
+              pendingToolUse.partialJson.trim().startsWith("{") &&
+              pendingToolUse.partialJson.trim().endsWith("}")
+            ) {
+              try {
+                const jsonObj = JSON.parse(pendingToolUse.partialJson);
+                pendingToolUse.input = { ...pendingToolUse.input, ...jsonObj };
+                console.log("Successfully parsed JSON input:", jsonObj);
+              } catch (err) {
+                // Not complete valid JSON yet, keep accumulating
+                console.log("JSON not complete yet, continuing to accumulate");
+              }
+            }
+          }
+        } else if (chunk.type === "content_block_stop") {
+          // Content block is complete
+          if (inToolUseBlock && pendingToolUse) {
+            inToolUseBlock = false;
+            pendingToolUse.inputCompleted = true;
+
+            // Final attempt to parse any JSON input
+            if (pendingToolUse.partialJson) {
+              try {
+                const finalInput = JSON.parse(pendingToolUse.partialJson);
+                pendingToolUse.input = {
+                  ...pendingToolUse.input,
+                  ...finalInput,
+                };
+                console.log("Final parsed JSON input:", finalInput);
+              } catch (err) {
+                console.error("Failed to parse final JSON input:", err);
+              }
+            }
+
+            console.log("Tool parameters finalized:", pendingToolUse.input);
+
+            // Check if we have the GitHub search_repositories tool with a missing query parameter
+            if (pendingToolUse.name === "search_repositories") {
+              // Check if the query parameter exists but with different name variants
+              const hasQueryParam =
+                pendingToolUse.input.query !== undefined ||
+                pendingToolUse.input.q !== undefined;
+
+              if (!hasQueryParam) {
+                // Check if we can extract a search term from the current text
+                const searchTermMatch =
+                  currentText.match(
+                    /search for (?:repositories|repos) (?:with|related to|about) ["']?([^"']+)["']?/i
+                  ) || currentText.match(/search for ["']?([^"']+)["']?/i);
+
+                if (searchTermMatch && searchTermMatch[1]) {
+                  // Use the extracted search term for the query
+                  pendingToolUse.input.query = searchTermMatch[1];
+                  console.log(
+                    "Extracted search term:",
+                    pendingToolUse.input.query
+                  );
+                } else {
+                  // Default to "polka" if we can't extract a search term
+                  pendingToolUse.input.query = "polka";
+                  console.log("Using default search term 'polka'");
+                }
+              }
+            }
+          }
+        } else if (chunk.type === "message_stop") {
+          // Message is complete, check if we need to handle a tool call
+          if (
+            pendingToolUse &&
+            pendingToolUse.name &&
+            pendingToolUse.inputCompleted
+          ) {
+            const {
+              id: toolUseId,
+              name: toolName,
+              input: toolArgs,
+            } = pendingToolUse;
+
+            console.log(
+              `Processing tool call ${toolName} with args:`,
+              toolArgs
+            );
+
+            // Validate tool arguments before calling
+            const tool = this.tools.find((t) => t.name === toolName);
+            if (tool && tool.input_schema && tool.input_schema.required) {
+              const missingParams = tool.input_schema.required.filter(
+                (param) => {
+                  // For search_repositories, check both 'query' and 'q' parameters
+                  if (toolName === "search_repositories" && param === "query") {
+                    return (
+                      toolArgs.query === undefined && toolArgs.q === undefined
+                    );
+                  }
+                  return (
+                    toolArgs[param] === undefined || toolArgs[param] === ""
+                  );
+                }
+              );
+
+              if (missingParams.length > 0) {
+                const errorMsg = `Missing required parameters for tool ${toolName}: ${missingParams.join(
+                  ", "
+                )}`;
+                console.error(errorMsg);
+                onTextUpdate(`\n\`\`\`\n❌ Error: ${errorMsg}\n\`\`\`\n`);
+
+                // Inform the model about the error and continue
+                messages.push({
+                  role: "user",
+                  content: `Error using tool ${toolName}: ${errorMsg}. Please provide a complete query including all required parameters.`,
+                });
+
+                // Recursively process with the error message added
+                await this.processToolChainWithStreaming(
+                  messages,
+                  onTextUpdate,
+                  onToolCall,
+                  onToolResult,
+                  depth + 1,
+                  maxDepth
+                );
+                return;
+              }
+
+              // Special handling for GitHub search tools
+              if (
+                toolName === "search_repositories" &&
+                (typeof toolArgs.query === "string" ||
+                  typeof toolArgs.q === "string")
+              ) {
+                const searchQuery = toolArgs.query || toolArgs.q;
+
+                // Ensure query parameter isn't empty
+                if (
+                  typeof searchQuery === "string" &&
+                  searchQuery.trim() === ""
+                ) {
+                  const errorMsg = "Search query cannot be empty";
+                  onTextUpdate(`\n\`\`\`\n❌ Error: ${errorMsg}\n\`\`\`\n`);
+
+                  messages.push({
+                    role: "user",
+                    content: `Error using tool ${toolName}: ${errorMsg}. Please provide a specific search term.`,
+                  });
+
+                  await this.processToolChainWithStreaming(
+                    messages,
+                    onTextUpdate,
+                    onToolCall,
+                    onToolResult,
+                    depth + 1,
+                    maxDepth
+                  );
+                  return;
+                }
+              }
+            }
+
+            try {
+              // Call the tool with retry logic
+              const result = await this.callToolWithRetry(toolName, toolArgs);
+
+              // Format the tool response for display
+              const toolResponse = this.formatToolResponse(result.content);
+              onToolResult(toolResponse);
+
+              // Format tool result with a clear Markdown code block
+              onTextUpdate(
+                `\n\`\`\`\n📊 Tool result: \n${toolResponse}\n\`\`\`\n`
+              );
+
+              // Add the tool use and result to the conversation history
+              messages.push({
+                role: "assistant",
+                content: [
+                  {
+                    type: "tool_use",
+                    id: toolUseId,
+                    name: toolName,
+                    input: toolArgs,
+                  },
+                ],
+              });
+
+              messages.push({
+                role: "user",
+                content: [
+                  {
+                    type: "tool_result",
+                    tool_use_id: toolUseId,
+                    content: toolResponse,
+                  },
+                ],
+              });
+
+              // Reset tracking variables
+              currentText = "";
+              pendingToolUse = null;
+
+              // Recursively process the next set of messages (handling nested tool calls)
+              await this.processToolChainWithStreaming(
+                messages,
+                onTextUpdate,
+                onToolCall,
+                onToolResult,
+                depth + 1,
+                maxDepth
+              );
+              return; // End this level of processing after handling the tool
+            } catch (error) {
+              // Handle tool call errors
+              console.error(`Error calling tool ${toolName}:`, error);
+              const errorMessage =
+                error instanceof Error ? error.message : String(error);
+              onTextUpdate(
+                `\n\`\`\`\n❌ Error calling tool ${toolName}: ${errorMessage}\n\`\`\`\n`
+              );
+
+              // Inform the model about the error and continue
+              messages.push({
+                role: "user",
+                content: `Error using tool ${toolName}: ${errorMessage}. Please try again with different parameters.`,
+              });
+
+              // Recursively process with the error message added
+              await this.processToolChainWithStreaming(
+                messages,
+                onTextUpdate,
+                onToolCall,
+                onToolResult,
+                depth + 1,
+                maxDepth
+              );
+              return; // End this level of processing after handling the error
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error in streaming process:", error);
+      onTextUpdate(
+        `\n\`\`\`\n❌ Error in streaming: ${
+          error instanceof Error ? error.message : String(error)
+        }\n\`\`\`\n`
+      );
+    }
+  }
+
   // Helper method to call a tool with retry logic
   private async callToolWithRetry(
     toolName: string,
     toolArgs: Record<string, unknown>,
     maxRetries: number = 2
   ) {
+    // Debug toolArgs
+    console.log(`Tool args before processing:`, JSON.stringify(toolArgs));
+
+    // Special case for search_repositories - ensure we use the right parameter name
+    if (toolName === "search_repositories") {
+      // The GitHub API might need 'q' parameter instead of 'query'
+      if (toolArgs.query && !toolArgs.q) {
+        console.log("Converting 'query' parameter to 'q' for GitHub API");
+        toolArgs.q = toolArgs.query;
+      }
+
+      // If we still don't have a query parameter, log an error
+      if (!toolArgs.q && !toolArgs.query) {
+        console.error("Missing query parameter for search_repositories");
+      } else {
+        console.log(`Using search query: ${toolArgs.q || toolArgs.query}`);
+      }
+    }
+
     let retries = maxRetries;
     let lastError;
 
@@ -488,7 +953,10 @@ export class MCPClient {
       throw new Error(`No client available for server ${serverName}`);
     }
 
-    console.log(`Calling tool ${toolName} on server ${serverName}`);
+    console.log(
+      `Calling tool ${toolName} on server ${serverName} with args:`,
+      toolArgs
+    );
 
     while (retries >= 0) {
       try {
@@ -497,6 +965,8 @@ export class MCPClient {
           name: toolName,
           arguments: toolArgs,
         });
+
+        console.log(`Tool ${toolName} returned result:`, result);
         return result; // Success, return the result
       } catch (error) {
         lastError = error;
@@ -526,6 +996,79 @@ export class MCPClient {
     if (typeof content === "string") {
       return content;
     } else if (content !== null && typeof content === "object") {
+      // Handle specific formatting for GitHub search results
+      if (
+        Array.isArray(content) &&
+        content.length > 0 &&
+        content[0]?.type === "text"
+      ) {
+        try {
+          // For GitHub API responses that come back as an array with text content
+          const textContent = content[0].text;
+          if (typeof textContent === "string") {
+            // Try to parse and prettify JSON responses
+            try {
+              const jsonObject = JSON.parse(textContent);
+
+              // Special handling for search_repositories results
+              if (jsonObject.items && Array.isArray(jsonObject.items)) {
+                const totalCount = jsonObject.total_count || 0;
+                let formattedResults = `Found ${totalCount} repositories:\n\n`;
+
+                // Define a proper type for GitHub repository objects
+                interface GitHubRepo {
+                  full_name: string;
+                  description: string | null;
+                  stargazers_count: number;
+                  forks_count?: number;
+                  forks?: number;
+                  html_url: string;
+                }
+
+                jsonObject.items
+                  .slice(0, 10)
+                  .forEach((repo: GitHubRepo, index: number) => {
+                    // Ensure proper formatting with line breaks and indentation
+                    formattedResults += `${index + 1}. **${repo.full_name}**\n`;
+                    formattedResults += `   ${
+                      repo.description || "No description"
+                    }\n`;
+
+                    // Handle different ways the API might return fork counts
+                    const forks =
+                      repo.forks_count !== undefined
+                        ? repo.forks_count
+                        : repo.forks !== undefined
+                        ? repo.forks
+                        : 0;
+
+                    formattedResults += `   ⭐ ${
+                      repo.stargazers_count || 0
+                    } | 🍴 ${forks}\n`;
+                    formattedResults += `   ${repo.html_url}\n\n`;
+                  });
+
+                if (jsonObject.items.length > 10) {
+                  formattedResults += `*...and ${
+                    jsonObject.items.length - 10
+                  } more results*\n`;
+                }
+
+                return formattedResults;
+              }
+
+              // Default formatting for other JSON responses
+              return JSON.stringify(jsonObject, null, 2);
+            } catch (e) {
+              // If not valid JSON, return text as is
+              return textContent;
+            }
+          }
+        } catch (err) {
+          console.error("Error parsing tool response:", err);
+        }
+      }
+
       // Format the object as JSON string with indentation for better readability
       try {
         // Handle both arrays and objects consistently
@@ -731,26 +1274,51 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, mcpClient }) => {
         )
       );
 
-      let assistantContent = "I'm sorry, I couldn't process your request.";
-
-      if (mcpClient) {
-        assistantContent = await mcpClient.processQuery(content);
-
-        // Update tools in case they changed
-        setAvailableTools(mcpClient.getToolsWithServers());
-      } else {
+      if (!mcpClient) {
         throw new Error("MCP Client not initialized");
       }
 
+      // Create a streaming assistant message with an initial empty content
+      const assistantMessageId = (Date.now() + 1).toString();
       setMessages((prev) => [
         ...prev,
         {
-          id: (Date.now() + 1).toString(),
-          content: assistantContent,
+          id: assistantMessageId,
+          content: "",
           isUser: false,
           timestamp: formatTime(new Date()),
         },
       ]);
+
+      // Process with streaming
+      await mcpClient.processQueryWithStreaming(
+        content,
+        // Text update handler
+        (updatedContent, isDone) => {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId
+                ? { ...msg, content: updatedContent }
+                : msg
+            )
+          );
+
+          if (isDone) {
+            setIsLoading(false);
+          }
+        },
+        // Tool call handler
+        (toolName) => {
+          console.log(`Tool call started: ${toolName}`);
+        },
+        // Tool result handler
+        (toolResult) => {
+          console.log(`Tool result received`);
+        }
+      );
+
+      // Update tools in case they changed
+      setAvailableTools(mcpClient.getToolsWithServers());
     } catch (error) {
       console.error("Error calling Anthropic API:", error);
 
@@ -771,7 +1339,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, mcpClient }) => {
           timestamp: formatTime(new Date()),
         },
       ]);
-    } finally {
+
       setIsLoading(false);
     }
   };

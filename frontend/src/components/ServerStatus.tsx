@@ -261,7 +261,6 @@ const ServerStatus: React.FC<ServerStatusProps> = ({
                 <TableHeader>
                   <TableRow>
                     <TableHead>Server Name</TableHead>
-                    <TableHead>URL</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Connection</TableHead>
                   </TableRow>
@@ -279,9 +278,6 @@ const ServerStatus: React.FC<ServerStatusProps> = ({
                             <span>{config.icon}</span>
                             <span>{serverName}</span>
                           </div>
-                        </TableCell>
-                        <TableCell className="font-mono text-xs">
-                          {config.url}
                         </TableCell>
                         <TableCell>
                           {isConnected ? (
