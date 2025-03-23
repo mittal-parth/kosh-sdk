@@ -1,54 +1,26 @@
-# Kosh - Secure Tool Services Platform for LLMs using TEEs
+# 🧰 Kosh
 
-A comprehensive platform for deploying Trusted Execution Environment (TEE)-based tool services for Large Language Models (LLMs) using the MCP (Model Control Protocol).
+Simple and secure way to interact with MCP Servers in Trusted Execution Environments (TEEs).
 
-## Overview
+## 🤔 Problems Identified
 
-Kosh provides a seamless solution for deploying secure tool services for LLMs in a Trusted Execution Environment. It handles infrastructure for hosting and request routing while ensuring secure deployment and execution through Nillion and Merlin TEE technologies.
+- [Anthropic's Model Context Protocol (MCP)](https://www.anthropic.com/news/model-context-protocol) is fairly new and currently requires manual setup and some familiarity with coding.
+- Since MCP enables users to interact with their private data, it becomes increasingly important to keep the data and execution environment secure.
 
-## Components
+## ⚡️ Solution
 
-The project consists of two main parts:
+- Connect to MCP Servers in just a few clicks, with absolutely no coding required.
+  1. Select the servers you need. Currently offers 4 servers:
+      - Brave Search [Add search capabilities to your chatbot]
+      - Slack [Interact with Slack]
+      - GitHub [Interact with GitHub]
+      - RAG (Retrieval Augmented Generation) capabilities powered by [Nilrag](https://github.com/NillionNetwork/nilrag/tree/main). We built a custom nilRAG MCP server to allow users to upload any data, store them securely in a nilDB and query them using nilAI. 
+  2. Provide the API keys required.
+  3. Start interacting with the server in real time.
+- All the MCP servers are deployed in a [TEE](https://docs.trustauthority.intel.com/main/articles/concept-tees-overview.html) environment powered by [Marlin](https://docs.marlin.org/oyster/introduction-to-marlin/), meaning all interactions are private and hardware-level secure.
+- We modified the existing community MCP servers to support [Cloudflare's Remote MCP](https://developers.cloudflare.com/agents/guides/remote-mcp-server/) protocol. This eliminates the need for running local proxy servers and allows users to access MCP servers from anywhere, rather than requiring them to be on the same machine as the client.
 
-### Frontend
-
-The Kosh frontend provides a user interface for interacting with the various MCP services. It offers:
-
-- Service configuration and management dashboard
-- Real-time monitoring of MCP service activity
-- User authentication and access control
-- Integration with TEE secure environments
-
-### MCP Services
-
-Kosh includes four main MCP services:
-
-1. **MCP Brave** - MCP server for integration with Brave browser
-2. **MCP Slack** - MCP server for Slack integration
-3. **MCP GitHub** - MCP server for GitHub integration
-4. **MCP Nilrag** - Core MCP server providing secure computation capabilities
-
-## Setup and Configuration
-
-### MCP Client Configuration
-
-To add Kosh services to your MCP client (e.g., Claude), use the following configuration:
-
-```json
-{
-  "mcpServers": {
-    "nilrag-brave": {
-      "command": "npx",
-      "args": [
-        "mcp-remote",
-        "https://dadc-2409-40f2-15a-d04a-ec2f-ff68-c1e7-5a5c.ngrok-free.app/mcp"
-      ]
-    }
-  }
-}
-```
-
-This configuration should be added to your MCP client's configuration file.
+## 🛠️ Setup and Configuration
 
 ### Prerequisites
 
@@ -70,41 +42,42 @@ cd frontend
 npm install
 ```
 
-3. Install dependencies for each service as needed.
-
-4. Start the frontend development server:
+3. Start the frontend development server:
 ```bash
 npm run dev
 ```
 
-## Security Features
+4. Install dependencies for each service as needed.
 
-### Trusted Execution Environments (TEEs)
+```bash
+cd mcp-servers/<name-of-the-server>
+npm install
+```
 
-Kosh leverages TEEs to provide secure computation environments where sensitive data remains protected even during processing. The implementation uses:
+5. Start the MCP server:
+```bash
+npm run dev
+```
 
-- **Nillion** - A secure computation network that decentralizes trust for high-value data
-- **Merlin** - Advanced TEE technology providing isolated execution environments
+## 📂 Project Structure
 
-This combination ensures:
-- Data privacy during computation
-- Secure parameter handling
-- Protection against side-channel attacks
-- Tamper-proof execution environments
+- `/frontend` - The MCP Client with the UI to access the MCP servers
+- `/mcp-servers` - Contains the remote MCP servers
+- `/marlin` - Docker files to deploy servers onto TEEs powered by Marlin
 
-## Project Structure
+## 🤝 Team
 
-- `/frontend` - User interface for service management and monitoring
-- `/mcp-servers` - Contains the four MCP server implementations
-- `/common` - Shared utilities and libraries
-- `/operations` - Operational tools and scripts
-- `/marlin` - Integration with Marlin Network for TEE capabilities
+- [Abhiraj Mengade](https://github.com/abhiraj-mengade)
+- [Asim Jawahir](https://github.com/CommanderAstern)
+- [Parht Mittal](https://github.com/mittal-parth)
 
-## License
+## 📚 References
 
-MIT License - See LICENSE file for details
-
-## Support
-
-For more information about Nillion and secure TEE-based development, visit [Nillion Documentation](https://docs.nillion.com/).
-
+- [Cloudflare's Remote MCP](https://developers.cloudflare.com/agents/guides/remote-mcp-server/)
+- [Marlin](https://docs.marlin.org/oyster/introduction-to-marlin/)
+- [Nillion](https://docs.nillion.com/)
+- [MCP Example Servers](https://modelcontextprotocol.io/examples)
+- [GitHub's MCP Server](https://github.com/modelcontextprotocol/servers/tree/main/src/github)
+- [Brave's MCP Server](https://github.com/modelcontextprotocol/servers/tree/main/src/brave-search)
+- [Slack's MCP Server](https://github.com/modelcontextprotocol/servers/tree/main/src/slack)
+- [nilRAG](https://github.com/NillionNetwork/nilrag/tree/main)
