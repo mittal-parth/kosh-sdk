@@ -9,6 +9,12 @@ Simple and secure way to interact with remote MCP Servers in Trusted Execution E
 
 ## ⚡️ Solution
 
+
+
+https://github.com/user-attachments/assets/2de32ca8-40c7-4cb4-aa6b-2d5dafac4b43
+
+
+
 - Connect to MCP Servers in just a few clicks, with absolutely no coding required.
   1. Select the servers you need. Currently offers 4 servers:
       - Brave Search [Add search capabilities to your chatbot]
