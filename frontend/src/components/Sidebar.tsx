@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import Message from "./Message";
 import SidebarChatInput from "./SidebarChatInput";
@@ -587,6 +587,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, mcpClient }) => {
   ]);
   const [isLoading, setIsLoading] = useState(false);
   const [availableTools, setAvailableTools] = useState<Tool[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Update available tools when the client changes or when the client's state changes
   useEffect(() => {
@@ -594,6 +595,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, mcpClient }) => {
       setAvailableTools(mcpClient.getTools());
     }
   }, [mcpClient]);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   function formatTime(date: Date): string {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -735,6 +741,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, mcpClient }) => {
               status={message.status}
             />
           ))}
+          <div ref={messagesEndRef} />
         </div>
 
         <SidebarChatInput
