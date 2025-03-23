@@ -37,7 +37,7 @@ export const MCP_SERVERS: Record<string, ServerConfig> = {
     description: "Vector Search Server",
     icon: "🔍",
   },
-  "Slack": {
+  Slack: {
     url: "http://localhost:5176/mcp",
     enabled: false,
     description: "Chat with your team on Slack",

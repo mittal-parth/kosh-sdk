@@ -11,14 +11,18 @@ export interface Env {
 }
 
 class SlackClient {
-  private botHeaders: { Authorization: string; "Content-Type": string; "ngrok-skip-browser-warning": string };
+  private botHeaders: {
+    Authorization: string;
+    "Content-Type": string;
+    "ngrok-skip-browser-warning": string;
+  };
   private teamId: string;
 
   constructor(botToken: string, teamId: string) {
     this.botHeaders = {
       Authorization: `Bearer ${botToken}`,
       "Content-Type": "application/json",
-      "ngrok-skip-browser-warning": "true"
+      "ngrok-skip-browser-warning": "true",
     };
     this.teamId = teamId;
   }
@@ -177,7 +181,10 @@ export class MCPMathServer extends DurableMCP {
     }
 
     if (this.SLACK_BOT_TOKEN && this.SLACK_TEAM_ID) {
-      this.slackClient = new SlackClient(this.SLACK_BOT_TOKEN, this.SLACK_TEAM_ID);
+      this.slackClient = new SlackClient(
+        this.SLACK_BOT_TOKEN,
+        this.SLACK_TEAM_ID
+      );
     }
   }
 
@@ -186,6 +193,7 @@ export class MCPMathServer extends DurableMCP {
     if (this.SLACK_BOT_TOKEN && this.SLACK_TEAM_ID) {
       this.server.tool(
         "slack_list_channels",
+        "List all available public channels in the Slack workspace",
         {
           limit: z
             .number()
@@ -237,6 +245,7 @@ export class MCPMathServer extends DurableMCP {
 
       this.server.tool(
         "slack_post_message",
+        "Send a new message to a specified Slack channel",
         {
           channel_id: z.string().describe("The ID of the channel to post to"),
           text: z.string().describe("The message text to post"),
@@ -278,6 +287,7 @@ export class MCPMathServer extends DurableMCP {
 
       this.server.tool(
         "slack_reply_to_thread",
+        "Reply to an existing thread in a Slack channel",
         {
           channel_id: z
             .string()
@@ -327,6 +337,7 @@ export class MCPMathServer extends DurableMCP {
 
       this.server.tool(
         "slack_add_reaction",
+        "Add an emoji reaction to a specific message in a Slack channel",
         {
           channel_id: z
             .string()
@@ -376,6 +387,7 @@ export class MCPMathServer extends DurableMCP {
 
       this.server.tool(
         "slack_get_channel_history",
+        "Retrieve recent message history from a Slack channel",
         {
           channel_id: z.string().describe("The ID of the channel"),
           limit: z
@@ -431,6 +443,7 @@ export class MCPMathServer extends DurableMCP {
 
       this.server.tool(
         "slack_get_thread_replies",
+        "Retrieve all replies in a specific message thread",
         {
           channel_id: z
             .string()
@@ -490,6 +503,7 @@ export class MCPMathServer extends DurableMCP {
 
       this.server.tool(
         "slack_get_users",
+        "List all users in the Slack workspace with pagination support",
         {
           cursor: z
             .string()
@@ -545,6 +559,7 @@ export class MCPMathServer extends DurableMCP {
 
       this.server.tool(
         "slack_get_user_profile",
+        "Retrieve detailed profile information for a specific user",
         {
           user_id: z.string().describe("The ID of the user"),
         },

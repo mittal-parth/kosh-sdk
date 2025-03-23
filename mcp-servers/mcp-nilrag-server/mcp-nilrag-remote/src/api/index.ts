@@ -236,21 +236,29 @@ export class MCPMathServer extends DurableMCP {
   }
 
   async init() {
-    this.server.tool("nilrag_initialize", {}, async () => {
-      const result = await this.initializeNilRAG();
+    this.server.tool(
+      "nilrag_initialize",
+      "Initialize the NilRAG system with necessary credentials and configurations",
+      {},
+      async () => {
+        const result = await this.initializeNilRAG();
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Status: ${result.status}\nMessage: ${result.message || ""}`,
-          },
-        ],
-      };
-    });
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Status: ${result.status}\nMessage: ${
+                result.message || ""
+              }`,
+            },
+          ],
+        };
+      }
+    );
 
     this.server.tool(
       "nilrag_upload",
+      "Upload and process text content to the NilRAG system for private information retrieval",
       {
         content: z.string().describe("Text content to upload to nilRAG"),
         chunk_size: z
@@ -282,6 +290,7 @@ export class MCPMathServer extends DurableMCP {
 
     this.server.tool(
       "nilrag_query",
+      "Query the NilRAG system to retrieve information while preserving privacy",
       {
         prompt: z
           .string()
