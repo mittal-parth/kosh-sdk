@@ -25,7 +25,7 @@ export interface ServerConfig {
 // MCP Server configurations
 export const MCP_SERVERS: Record<string, ServerConfig> = {
   "Brave Search": {
-    url: "https://dadc-2409-40f2-15a-d04a-ec2f-ff68-c1e7-5a5c.ngrok-free.app/mcp",
+    url: "http://localhost:5174/mcp",
     enabled: false,
     description: "Search the web using Brave",
     icon: "🦁",
@@ -419,12 +419,162 @@ export class MCPClient {
               model: "claude-3-5-sonnet-20241022",
               max_tokens: 1000,
               messages,
+              tools: this.tools,
             });
 
-            // Add follow-up response to final text
+            // Add follow-up response to final text and process any additional tool calls
             for (const content of followUpResponse.content) {
               if (content.type === "text") {
                 finalText.push(content.text);
+              } else if (content.type === "tool_use") {
+                // Recursively process the next tool call
+                const nestedToolName = content.name;
+                const nestedToolArgs = content.input as Record<string, unknown>;
+                const nestedToolUseId = content.id;
+                
+                // Log the nested tool call in the UI
+                finalText.push(`🔧 Using tool: ${nestedToolName}`);
+                
+                try {
+                  // Add retry mechanism for nested tool calls
+                  let retries = 2; // Maximum 3 attempts (initial + 2 retries)
+                  let nestedResult;
+                  let lastError;
+                  
+                  while (retries >= 0) {
+                    try {
+                      nestedResult = await this.mcp.callTool({
+                        name: nestedToolName,
+                        arguments: nestedToolArgs,
+                      });
+                      break; // Success, exit the retry loop
+                    } catch (error) {
+                      lastError = error;
+                      console.warn(
+                        `Nested tool call attempt failed (${2 - retries}/2): ${nestedToolName}`,
+                        error
+                      );
+                      
+                      if (retries > 0) {
+                        // Wait before retrying (exponential backoff)
+                        await new Promise((resolve) =>
+                          setTimeout(resolve, 1000 * Math.pow(2, 2 - retries))
+                        );
+                      }
+                      retries--;
+                    }
+                  }
+                  
+                  // If all retries failed, throw the last error
+                  if (!nestedResult) {
+                    throw lastError;
+                  }
+                  
+                  // Process the nested tool result
+                  let nestedToolResponse = "";
+                  if (typeof nestedResult.content === "string") {
+                    nestedToolResponse = nestedResult.content;
+                  } else if (
+                    nestedResult.content !== null &&
+                    typeof nestedResult.content === "object"
+                  ) {
+                    // Format the object as JSON string for better readability
+                    try {
+                      if (Array.isArray(nestedResult.content)) {
+                        const isSimpleArray = nestedResult.content.every(
+                          (item) => typeof item !== "object" || item === null
+                        );
+                        
+                        if (isSimpleArray && nestedResult.content.length < 10) {
+                          nestedToolResponse = JSON.stringify(nestedResult.content);
+                        } else {
+                          nestedToolResponse = JSON.stringify(nestedResult.content, null, 2);
+                        }
+                      } else {
+                        nestedToolResponse = JSON.stringify(nestedResult.content, null, 2);
+                      }
+                    } catch (err) {
+                      nestedToolResponse = `[Complex object: ${Object.prototype.toString.call(
+                        nestedResult.content
+                      )}]`;
+                    }
+                  } else if (nestedResult.content === null) {
+                    nestedToolResponse = "null";
+                  } else if (nestedResult.content === undefined) {
+                    nestedToolResponse = "undefined";
+                  } else {
+                    nestedToolResponse = String(nestedResult.content);
+                  }
+                  
+                  finalText.push(`📊 Tool result: \n${nestedToolResponse}`);
+                  
+                  // Add the assistant's nested tool use message
+                  messages.push({
+                    role: "assistant",
+                    content: [
+                      {
+                        type: "tool_use",
+                        id: nestedToolUseId,
+                        name: nestedToolName,
+                        input: nestedToolArgs,
+                      },
+                    ],
+                  });
+                  
+                  // Add the nested tool result message
+                  messages.push({
+                    role: "user",
+                    content: [
+                      {
+                        type: "tool_result",
+                        tool_use_id: nestedToolUseId,
+                        content: nestedToolResponse,
+                      },
+                    ],
+                  });
+                  
+                  // Get another follow-up response from Claude with the nested tool result
+                  const nestedFollowUpResponse = await this.anthropic.messages.create({
+                    model: "claude-3-5-sonnet-20241022",
+                    max_tokens: 1000,
+                    messages,
+                    tools: this.tools,
+                  });
+                  
+                  // Process the nested follow-up response - just add the text parts
+                  for (const content of nestedFollowUpResponse.content) {
+                    if (content.type === "text") {
+                      finalText.push(content.text);
+                    }
+                    // Note: We don't handle deeper nested calls here to avoid excessive recursion
+                    // If more depth is needed, consider implementing a full recursive approach
+                  }
+                } catch (error) {
+                  console.error(`Error calling nested tool ${nestedToolName}:`, error);
+                  const errorMessage =
+                    error instanceof Error ? error.message : String(error);
+                  finalText.push(
+                    `❌ Error calling tool ${nestedToolName}: ${errorMessage}`
+                  );
+                  
+                  // Inform the model about the error and continue
+                  messages.push({
+                    role: "user",
+                    content: `Error using tool ${nestedToolName}: ${errorMessage}. Please continue without this tool.`,
+                  });
+                  
+                  const nestedErrorFollowUpResponse = await this.anthropic.messages.create({
+                    model: "claude-3-5-sonnet-20241022",
+                    max_tokens: 1000,
+                    messages,
+                  });
+                  
+                  for (const content of nestedErrorFollowUpResponse.content) {
+                    if (content.type === "text") {
+                      finalText.push(content.text);
+                    }
+                  }
+                }
               }
             }
           } catch (error) {
