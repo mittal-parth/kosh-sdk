@@ -107,6 +107,7 @@ export class MCPMathServer extends DurableMCP {
   async init() {
     this.server.tool(
       "brave_web_search",
+      "Search the web for information",
       {
         query: z.string().describe("Search query (max 400 chars, 50 words)"),
         count: z

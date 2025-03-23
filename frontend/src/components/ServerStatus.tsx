@@ -13,8 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { MCPClient, MCP_SERVERS, getServerDisplayName } from "./Sidebar";
-import { Tool } from "@anthropic-ai/sdk/resources";
+import { MCPClient, MCP_SERVERS, getServerDisplayName, Tool } from "./Sidebar";
 import {
   Table,
   TableHeader,
@@ -39,8 +38,14 @@ interface ServerConfig {
 // Use getServerDisplayName imported from Sidebar
 // const getServerDisplayName = (serverName: string): string => { ... };
 
-interface ServerStatusProps {
-  mcpClient: MCPClient | null;
+// Define our extended tool type instead of redefining Tool
+interface ExtendedTool extends Tool {
+  server?: string;
+  serverIcon?: React.ReactNode;
+}
+
+export interface ServerStatusProps {
+  mcpClient: MCPClient;
   onServerConnectionChange?: (connectedServers: string[]) => void;
 }
 
@@ -67,15 +72,14 @@ const ServerStatus: React.FC<ServerStatusProps> = ({
   const [serverHealthInfo, setServerHealthInfo] = useState<
     Record<string, { status: string; latency: number } | null>
   >({});
-  const [availableTools, setAvailableTools] = useState<Tool[]>([]);
+  const [availableTools, setAvailableTools] = useState<ExtendedTool[]>([]);
   const { toast } = useToast();
 
   // Update connected servers when mcpClient changes
   useEffect(() => {
     if (mcpClient) {
-      const currentConnectedServers = mcpClient.getConnectedServers();
-      setConnectedServers(currentConnectedServers);
-      setAvailableTools(mcpClient.getTools());
+      setAvailableTools(mcpClient.getToolsWithServers());
+      setConnectedServers(mcpClient.getConnectedServers());
     }
   }, [mcpClient]);
 
@@ -164,7 +168,7 @@ const ServerStatus: React.FC<ServerStatusProps> = ({
         success = await mcpClient.connectToServer(serverName);
         if (success) {
           // Update available tools and connected servers
-          setAvailableTools(mcpClient.getTools());
+          setAvailableTools(mcpClient.getToolsWithServers());
           setConnectedServers(mcpClient.getConnectedServers());
 
           // Update server status
@@ -189,7 +193,7 @@ const ServerStatus: React.FC<ServerStatusProps> = ({
         success = await mcpClient.disconnectFromServer(serverName);
         if (success) {
           // Update available tools and connected servers
-          setAvailableTools(mcpClient.getTools());
+          setAvailableTools(mcpClient.getToolsWithServers());
           setConnectedServers(mcpClient.getConnectedServers());
 
           // Update server status
@@ -364,30 +368,34 @@ const ServerStatus: React.FC<ServerStatusProps> = ({
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Tool Name</TableHead>
+                      <TableHead>Tool</TableHead>
                       <TableHead>Description</TableHead>
                       <TableHead>Server</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {availableTools.map((tool, index) => (
-                      <TableRow key={`${tool.name}-${index}`}>
+                    {availableTools.map((tool) => (
+                      <TableRow key={tool.name}>
                         <TableCell className="font-medium">
                           {tool.name}
                         </TableCell>
                         <TableCell>{tool.description}</TableCell>
                         <TableCell>
-                          {/* Try to determine which server this tool belongs to */}
-                          {connectedServers.length === 1 ? (
-                            <div className="flex items-center gap-2">
-                              <span>
-                                {MCP_SERVERS[connectedServers[0]]?.icon}
-                              </span>
-                              <span>{connectedServers[0]}</span>
-                            </div>
-                          ) : (
-                            <Badge variant="outline">Unknown</Badge>
-                          )}
+                          {(() => {
+                            // Get server info for this tool
+                            const serverInfo = mcpClient.getServerForTool(
+                              tool.name
+                            );
+                            if (serverInfo) {
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <span>{serverInfo.icon}</span>
+                                  <span>{serverInfo.name}</span>
+                                </div>
+                              );
+                            }
+                            return <Badge variant="outline">Unknown</Badge>;
+                          })()}
                         </TableCell>
                       </TableRow>
                     ))}

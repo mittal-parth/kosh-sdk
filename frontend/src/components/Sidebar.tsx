@@ -6,7 +6,7 @@ import { Anthropic } from "@anthropic-ai/sdk";
 import { MessageParam } from "@anthropic-ai/sdk/resources/messages/messages.mjs";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
-import { Tool } from "@anthropic-ai/sdk/resources";
+import { Tool as AnthropicTool } from "@anthropic-ai/sdk/resources";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -55,10 +55,23 @@ export const getServerDisplayName = (serverName: string): string => {
   return `${config.icon} ${serverName}`;
 };
 
+// Export the Tool type
+export type Tool = {
+  name: string;
+  description: string;
+  input_schema: {
+    type: "object";
+    properties: Record<string, unknown>;
+    required: string[];
+  };
+  server?: string;
+  serverIcon?: string;
+};
+
 // MCP Client implementation
 export class MCPClient {
   private anthropic: Anthropic;
-  private mcp: Client;
+  private mcp: Record<string, Client> = {}; // One Client per server
   private transports: Record<string, SSEClientTransport> = {};
   private tools: Tool[] = [];
   private connectedServers: string[] = [];
@@ -69,7 +82,6 @@ export class MCPClient {
       apiKey: apiKey,
       dangerouslyAllowBrowser: true,
     });
-    this.mcp = new Client({ name: "mcp-client-web", version: "1.0.0" });
   }
 
   // Connect to an MCP server
@@ -86,6 +98,12 @@ export class MCPClient {
         console.error(`Unknown server: ${serverName}`);
         return false;
       }
+
+      // Create a new Client instance for this server
+      this.mcp[serverName] = new Client({
+        name: "mcp-client-web",
+        version: "1.0.0",
+      });
 
       // Create transport for this specific server
       console.log(`Creating SSE transport for URL: ${serverConfig.url}`);
@@ -104,12 +122,12 @@ export class MCPClient {
       // Connect to the server
       console.log(`Connecting to MCP server ${serverName}...`);
       try {
-        await this.mcp.connect(this.transports[serverName]);
+        await this.mcp[serverName].connect(this.transports[serverName]);
         console.log(`Successfully connected to MCP server ${serverName}`);
       } catch (error) {
         console.error(`Error connecting to MCP server ${serverName}:`, error);
 
-        // Clean up the transport on connection failure
+        // Clean up the transport and client on connection failure
         if (this.transports[serverName]) {
           try {
             await this.transports[serverName].close();
@@ -121,6 +139,7 @@ export class MCPClient {
             );
           }
         }
+        delete this.mcp[serverName];
 
         throw new Error(
           `Failed to connect to MCP server: ${
@@ -133,14 +152,14 @@ export class MCPClient {
       console.log(`Fetching tools from server ${serverName}...`);
       let toolsResult;
       try {
-        toolsResult = await this.mcp.listTools();
+        toolsResult = await this.mcp[serverName].listTools();
         console.log(
           `Received ${toolsResult.tools.length} tools from server ${serverName}`
         );
       } catch (error) {
         console.error(`Error fetching tools from server ${serverName}:`, error);
 
-        // Clean up the transport on tool fetch failure
+        // Clean up the transport and client on tool fetch failure
         if (this.transports[serverName]) {
           try {
             await this.transports[serverName].close();
@@ -152,6 +171,7 @@ export class MCPClient {
             );
           }
         }
+        delete this.mcp[serverName];
 
         throw new Error(
           `Failed to fetch tools: ${
@@ -170,8 +190,17 @@ export class MCPClient {
             properties: tool.inputSchema.properties || {},
             required: tool.inputSchema.required || [],
           },
+          // Add server information to the tool
+          server: serverName,
+          serverIcon: serverConfig.icon || "",
         };
       });
+
+      // Show which tools were found for debugging
+      console.log(
+        `Server ${serverName} tools:`,
+        formattedTools.map((t) => t.name).join(", ")
+      );
 
       // Store tools for this specific server
       this.serverTools[serverName] = formattedTools;
@@ -190,7 +219,7 @@ export class MCPClient {
       return true;
     } catch (e) {
       console.error(`Failed to connect to MCP server ${serverName}:`, e);
-      // Clean up any remaining transport
+      // Clean up any remaining transport and client
       if (this.transports[serverName]) {
         try {
           await this.transports[serverName].close();
@@ -202,39 +231,49 @@ export class MCPClient {
         }
         delete this.transports[serverName];
       }
+      delete this.mcp[serverName];
       return false;
     }
   }
 
-  // Disconnect from a server
+  // Disconnect from an MCP server
   async disconnectFromServer(serverName: string) {
     try {
+      // Check if connected to this server
       if (!this.connectedServers.includes(serverName)) {
-        console.log(`Server ${serverName} is not connected`);
+        console.log(`Not connected to server: ${serverName}`);
         return true;
       }
 
-      // Close the specific transport
+      // Remove transport for this server
       if (this.transports[serverName]) {
-        await this.transports[serverName].close();
+        // Call close on the transport
+        try {
+          await this.transports[serverName].close();
+        } catch (e) {
+          console.error(`Error closing transport for ${serverName}:`, e);
+        }
         delete this.transports[serverName];
       }
 
-      // Remove server tools
+      // Remove client for this server
+      delete this.mcp[serverName];
+
+      // Remove tools for this server
       delete this.serverTools[serverName];
 
-      // Update combined tools list
+      // Rebuild the combined tools list
       this.tools = Object.values(this.serverTools).flat();
 
-      // Remove from connected servers list
+      // Remove from connected servers
       this.connectedServers = this.connectedServers.filter(
-        (name) => name !== serverName
+        (s) => s !== serverName
       );
 
       console.log(`Disconnected from server: ${serverName}`);
       return true;
     } catch (e) {
-      console.error(`Failed to disconnect from MCP server ${serverName}:`, e);
+      console.error(`Error disconnecting from server: ${serverName}`, e);
       return false;
     }
   }
@@ -253,6 +292,7 @@ export class MCPClient {
 
       // Reset all state
       this.transports = {};
+      this.mcp = {};
       this.connectedServers = [];
       this.serverTools = {};
       this.tools = [];
@@ -270,9 +310,25 @@ export class MCPClient {
     return this.connectedServers;
   }
 
-  // Get available tools
-  getTools() {
+  // Get tools with server information
+  getToolsWithServers(): Array<
+    Tool & { server?: string; serverIcon?: string }
+  > {
     return this.tools;
+  }
+
+  // Get server for a specific tool
+  getServerForTool(toolName: string): { name: string; icon?: string } | null {
+    for (const [serverName, tools] of Object.entries(this.serverTools)) {
+      const tool = tools.find((t) => t.name === toolName);
+      if (tool) {
+        return {
+          name: serverName,
+          icon: MCP_SERVERS[serverName]?.icon,
+        };
+      }
+    }
+    return null;
   }
 
   async processQuery(query: string) {
@@ -302,19 +358,33 @@ export class MCPClient {
   }
 
   // Recursive method to handle arbitrary chains of tool calls
-  private async processToolChain(messages: MessageParam[], finalText: string[], depth: number = 0, maxDepth: number = 10) {
+  private async processToolChain(
+    messages: MessageParam[],
+    finalText: string[],
+    depth: number = 0,
+    maxDepth: number = 10
+  ) {
     // Safety check to prevent infinite recursion
     if (depth >= maxDepth) {
-      finalText.push(`⚠️ Maximum tool call depth (${maxDepth}) reached. Some operations may be incomplete.`);
+      finalText.push(
+        `⚠️ Maximum tool call depth (${maxDepth}) reached. Some operations may be incomplete.`
+      );
       return;
     }
 
+    // Strip custom properties from tools before sending to Anthropic API
+    const apiTools = this.tools.map(({ name, description, input_schema }) => ({
+      name,
+      description,
+      input_schema,
+    }));
+
     // Call Claude API with current messages and tools
     const response = await this.anthropic.messages.create({
-      model: "claude-3-5-sonnet-20241022",
+      model: "claude-3-7-sonnet-latest",
       max_tokens: 1000,
       messages,
-      tools: this.tools,
+      tools: apiTools,
     });
 
     // Process each content item in the response
@@ -334,7 +404,7 @@ export class MCPClient {
         try {
           // Call the tool with retry logic
           const result = await this.callToolWithRetry(toolName, toolArgs);
-          
+
           // Format the tool response for display
           const toolResponse = this.formatToolResponse(result.content);
           finalText.push(`📊 Tool result: \n${toolResponse}`);
@@ -370,9 +440,7 @@ export class MCPClient {
           console.error(`Error calling tool ${toolName}:`, error);
           const errorMessage =
             error instanceof Error ? error.message : String(error);
-          finalText.push(
-            `❌ Error calling tool ${toolName}: ${errorMessage}`
-          );
+          finalText.push(`❌ Error calling tool ${toolName}: ${errorMessage}`);
 
           // Inform the model about the error and continue
           messages.push({
@@ -388,13 +456,39 @@ export class MCPClient {
   }
 
   // Helper method to call a tool with retry logic
-  private async callToolWithRetry(toolName: string, toolArgs: Record<string, unknown>, maxRetries: number = 2) {
+  private async callToolWithRetry(
+    toolName: string,
+    toolArgs: Record<string, unknown>,
+    maxRetries: number = 2
+  ) {
     let retries = maxRetries;
     let lastError;
 
+    // Find which server this tool belongs to
+    let serverName: string | null = null;
+    for (const [server, tools] of Object.entries(this.serverTools)) {
+      if (tools.some((tool) => tool.name === toolName)) {
+        serverName = server;
+        break;
+      }
+    }
+
+    if (!serverName) {
+      throw new Error(`Tool ${toolName} not found on any connected server`);
+    }
+
+    // Get the client and transport for this server
+    const client = this.mcp[serverName];
+    if (!client) {
+      throw new Error(`No client available for server ${serverName}`);
+    }
+
+    console.log(`Calling tool ${toolName} on server ${serverName}`);
+
     while (retries >= 0) {
       try {
-        const result = await this.mcp.callTool({
+        // Use server-specific client
+        const result = await client.callTool({
           name: toolName,
           arguments: toolArgs,
         });
@@ -402,7 +496,9 @@ export class MCPClient {
       } catch (error) {
         lastError = error;
         console.warn(
-          `Tool call attempt failed (${maxRetries - retries}/${maxRetries}): ${toolName}`,
+          `Tool call attempt failed (${
+            maxRetries - retries
+          }/${maxRetries}): ${toolName} on server ${serverName}`,
           error
         );
 
@@ -421,7 +517,7 @@ export class MCPClient {
   }
 
   // Helper method to format tool responses for display
-  private formatToolResponse(content: any): string {
+  private formatToolResponse(content: unknown): string {
     if (typeof content === "string") {
       return content;
     } else if (content !== null && typeof content === "object") {
@@ -566,6 +662,11 @@ export class MCPClient {
       };
     }
   }
+
+  // Get available tools
+  getTools() {
+    return this.getToolsWithServers();
+  }
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, mcpClient }) => {
@@ -592,7 +693,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, mcpClient }) => {
   // Update available tools when the client changes or when the client's state changes
   useEffect(() => {
     if (mcpClient) {
-      setAvailableTools(mcpClient.getTools());
+      setAvailableTools(mcpClient.getToolsWithServers());
     }
   }, [mcpClient]);
 
@@ -631,7 +732,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, mcpClient }) => {
         assistantContent = await mcpClient.processQuery(content);
 
         // Update tools in case they changed
-        setAvailableTools(mcpClient.getTools());
+        setAvailableTools(mcpClient.getToolsWithServers());
       } else {
         throw new Error("MCP Client not initialized");
       }
