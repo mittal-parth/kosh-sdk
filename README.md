@@ -1,6 +1,6 @@
 # 🧰 Kosh
 
-Simple and secure way to interact with MCP Servers in Trusted Execution Environments (TEEs).
+Simple and secure way to interact with remote MCP Servers in Trusted Execution Environments (TEEs) with no coding required.
 
 ## 🤔 Problems Identified
 
