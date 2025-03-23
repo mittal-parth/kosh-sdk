@@ -28,7 +28,6 @@ export class MCPMathServer extends DurableMCP {
     version: "1.0.0",
   });
 
-  private BRAVE_API_KEY: string;
   private NILRAG_API_URL: string;
   private NILRAG_ORG_SECRET_KEY: string;
   private NILRAG_ORG_DID: string;
@@ -47,11 +46,6 @@ export class MCPMathServer extends DurableMCP {
     this.NILAI_API_TOKEN = env.NILAI_API_TOKEN || "Nillion2025";
     this.NILAI_API_URL =
       env.NILAI_API_URL || "https://nilai-a779.nillion.network";
-
-    if (!this.BRAVE_API_KEY) {
-      console.error("Error: BRAVE_API_KEY environment variable is required");
-      throw new Error("BRAVE_API_KEY environment variable is required");
-    }
   }
 
   private async initializeNilRAG() {

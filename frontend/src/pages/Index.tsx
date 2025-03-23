@@ -43,7 +43,9 @@ const Index = () => {
         <div className="mb-8 flex justify-between items-center">
           <div className="animate-fade-in">
             <h1 className="text-3xl font-semibold mb-2">Kosh MCP</h1>
-            <p className="text-gray-500">A secure mcp solution</p>
+            <p className="text-gray-500">
+              A Secure MCP Solution powered by TEEs
+            </p>
           </div>
           <div className="flex space-x-3">
             <Button variant="outline" className="flex items-center gap-2">

@@ -30,11 +30,16 @@ export const MCP_SERVERS: Record<string, ServerConfig> = {
     description: "Search the web using Brave",
     icon: "🦁",
   },
-  // Sample servers - these are configured with the same URL to make them work with the existing server
-  "vector-search": {
-    url: "http://localhost:5173/mcp", // Using same URL as nilrag-brave to make it work
+  GitHub: {
+    url: "http://localhost:5174/mcp",
     enabled: false,
-    description: "Vector Search Server",
+    description: "Search GitHub repositories",
+    icon: "🐙",
+  },
+  "NilRAG Server": {
+    url: "http://localhost:5175/mcp",
+    enabled: false,
+    description: "Upload and query files on Nillion DB",
     icon: "🔍",
   },
   Slack: {
@@ -381,7 +386,7 @@ export class MCPClient {
 
     // Call Claude API with current messages and tools
     const response = await this.anthropic.messages.create({
-      model: "claude-3-7-sonnet-latest",
+      model: "claude-3-5-sonnet-latest",
       max_tokens: 1000,
       messages,
       tools: apiTools,

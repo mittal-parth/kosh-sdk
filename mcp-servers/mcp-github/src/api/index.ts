@@ -60,18 +60,11 @@ export class MCPGitHubServer extends DurableMCP {
     version: "1.0.0",
   });
 
-  private BRAVE_API_KEY: string;
   private GITHUB_PERSONAL_ACCESS_TOKEN: string;
 
   constructor(state: DurableObjectState, env: Env) {
     super(state, env);
-    this.BRAVE_API_KEY = env.BRAVE_API_KEY;
     this.GITHUB_PERSONAL_ACCESS_TOKEN = env.GITHUB_PERSONAL_ACCESS_TOKEN;
-
-    if (!this.BRAVE_API_KEY) {
-      console.error("Error: BRAVE_API_KEY environment variable is required");
-      throw new Error("BRAVE_API_KEY environment variable is required");
-    }
 
     if (!this.GITHUB_PERSONAL_ACCESS_TOKEN) {
       console.error(
