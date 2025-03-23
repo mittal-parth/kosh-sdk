@@ -149,13 +149,41 @@ export default {
     const url = new URL(request.url);
     const router = MCPMathServer.mount("/mcp");
 
+    // Handle CORS preflight requests
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          "Access-Control-Max-Age": "86400",
+        },
+      });
+    }
+
+    let response: Response;
     if (
       url.pathname.startsWith("/mcp") ||
       url.pathname.startsWith("/sse/message")
     ) {
-      return router.fetch(request, env, ctx);
+      response = await router.fetch(request, env, ctx);
+    } else {
+      response = await env.ASSETS.fetch(request);
     }
 
-    return env.ASSETS.fetch(request);
+    // Add CORS headers to all responses
+    const corsHeaders = new Headers(response.headers);
+    corsHeaders.set("Access-Control-Allow-Origin", "*");
+    corsHeaders.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    corsHeaders.set(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization"
+    );
+
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: corsHeaders,
+    });
   },
 } satisfies ExportedHandler<Env>;

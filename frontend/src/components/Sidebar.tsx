@@ -25,7 +25,7 @@ export interface ServerConfig {
 // MCP Server configurations
 export const MCP_SERVERS: Record<string, ServerConfig> = {
   "Brave Search": {
-    url: "http://localhost:5173/mcp",
+    url: "http://localhost:5177/mcp",
     enabled: false,
     description: "Search the web using Brave",
     icon: "🦁",
