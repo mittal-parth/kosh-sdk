@@ -5,7 +5,6 @@ import { z } from "zod";
 export interface Env {
   MCP_OBJECT: DurableObjectNamespace;
   ASSETS: Fetcher;
-  BRAVE_API_KEY: string;
   SLACK_BOT_TOKEN: string;
   SLACK_TEAM_ID: string;
 }

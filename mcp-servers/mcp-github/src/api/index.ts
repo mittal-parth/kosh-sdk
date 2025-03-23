@@ -17,48 +17,7 @@ import {
 export interface Env {
   MCP_OBJECT: DurableObjectNamespace;
   ASSETS: Fetcher;
-  BRAVE_API_KEY: string;
   GITHUB_PERSONAL_ACCESS_TOKEN: string;
-}
-
-const RATE_LIMIT = {
-  perSecond: 1,
-  perMonth: 15000,
-};
-
-const requestCount = {
-  second: 0,
-  month: 0,
-  lastReset: Date.now(),
-};
-
-function checkRateLimit() {
-  const now = Date.now();
-  if (now - requestCount.lastReset > 1000) {
-    requestCount.second = 0;
-    requestCount.lastReset = now;
-  }
-  if (
-    requestCount.second >= RATE_LIMIT.perSecond ||
-    requestCount.month >= RATE_LIMIT.perMonth
-  ) {
-    throw new Error("Rate limit exceeded");
-  }
-  requestCount.second++;
-  requestCount.month++;
-}
-
-interface BraveWeb {
-  web?: {
-    results?: Array<{
-      title: string;
-      description: string;
-      url: string;
-      language?: string;
-      published?: string;
-      rank?: number;
-    }>;
-  };
 }
 
 // Helper function to format GitHub errors
@@ -125,44 +84,6 @@ export class MCPGitHubServer extends DurableMCP {
 
     // No need to set process.env as it's not available in Cloudflare Workers
     // We'll handle the token in a different way or let the operation utils use env vars directly
-  }
-
-  private async performWebSearch(
-    query: string,
-    count: number = 10,
-    offset: number = 0
-  ) {
-    checkRateLimit();
-    const url = new URL("https://api.search.brave.com/res/v1/web/search");
-    url.searchParams.set("q", query);
-    url.searchParams.set("count", Math.min(count, 20).toString());
-    url.searchParams.set("offset", offset.toString());
-
-    const response = await fetch(url, {
-      headers: {
-        Accept: "application/json",
-        "Accept-Encoding": "gzip",
-        "X-Subscription-Token": this.BRAVE_API_KEY,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(
-        `Brave API error: ${response.status} ${
-          response.statusText
-        }\n${await response.text()}`
-      );
-    }
-
-    const data = (await response.json()) as BraveWeb;
-
-    const results = (data.web?.results || []).map((result) => ({
-      title: result.title || "",
-      description: result.description || "",
-      url: result.url || "",
-    }));
-
-    return results;
   }
 
   private async githubRequest(url: string, options: GitHubRequestOptions = {}) {
