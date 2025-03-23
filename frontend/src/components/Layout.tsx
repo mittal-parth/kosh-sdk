@@ -1,13 +1,13 @@
-
-import React, { useState } from 'react';
-import Sidebar from './Sidebar';
-import { cn } from '@/lib/utils';
+import React, { useState } from "react";
+import Sidebar, { MCPClient } from "@/components/Sidebar";
+import { cn } from "@/lib/utils";
 
 interface LayoutProps {
   children: React.ReactNode;
+  mcpClient: MCPClient | null;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children }) => {
+const Layout: React.FC<LayoutProps> = ({ children, mcpClient }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   return (
@@ -40,7 +40,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       </button>
 
       {/* Sidebar */}
-      <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
+      <Sidebar
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+        mcpClient={mcpClient}
+      />
     </div>
   );
 };

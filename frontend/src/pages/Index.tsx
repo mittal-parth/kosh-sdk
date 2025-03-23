@@ -1,21 +1,35 @@
-import React, { useState, useEffect } from 'react';
-import { cn } from '@/lib/utils';
-import Layout from '@/components/Layout';
-import ServerStatus from '@/components/ServerStatus';
-import { Button } from '@/components/ui/button';
-import { MessageCircle } from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import { cn } from "@/lib/utils";
+import Layout from "@/components/Layout";
+import ServerStatus from "@/components/ServerStatus";
+import { Button } from "@/components/ui/button";
+import { MessageCircle } from "lucide-react";
+import { MCPClient } from "@/components/Sidebar";
+
+interface SystemConfig {
+  name: string;
+  version: string;
+  status: string;
+}
 
 const Index = () => {
   const [isLoading, setIsLoading] = useState(true);
-  const [config, setConfig] = useState<any>(null);
+  const [config, setConfig] = useState<SystemConfig | null>(null);
+  const [mcpClient, setMcpClient] = useState<MCPClient | null>(null);
 
   useEffect(() => {
+    // Initialize MCP client
+    const ANTHROPIC_API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY;
+    if (ANTHROPIC_API_KEY) {
+      setMcpClient(new MCPClient(ANTHROPIC_API_KEY as string));
+    }
+
     // Simulate loading configuration
     const timer = setTimeout(() => {
       setConfig({
         name: "Kosh MCP",
         version: "1.0.0",
-        status: "Ready"
+        status: "Ready",
       });
       setIsLoading(false);
     }, 1500);
@@ -24,7 +38,7 @@ const Index = () => {
   }, []);
 
   return (
-    <Layout>
+    <Layout mcpClient={mcpClient}>
       <div className="max-w-4xl mx-auto">
         <div className="mb-8 flex justify-between items-center">
           <div className="animate-fade-in">
@@ -40,13 +54,16 @@ const Index = () => {
         </div>
 
         <div className="space-y-6">
-          {isLoading ? (
-            <LoadingState />
-          ) : (
-            <ConfigDisplay config={config} />
-          )}
+          {isLoading ? <LoadingState /> : <ConfigDisplay config={config} />}
 
-          {!isLoading && <ServerStatus />}
+          {!isLoading && (
+            <ServerStatus
+              mcpClient={mcpClient}
+              onServerConnectionChange={(servers) => {
+                console.log("Connected servers changed:", servers);
+              }}
+            />
+          )}
         </div>
       </div>
     </Layout>
@@ -74,10 +91,12 @@ const LoadingState = () => {
 };
 
 interface ConfigDisplayProps {
-  config: any;
+  config: SystemConfig | null;
 }
 
 const ConfigDisplay: React.FC<ConfigDisplayProps> = ({ config }) => {
+  if (!config) return null;
+
   return (
     <div className="glass-panel rounded-lg overflow-hidden animate-fade-in">
       <div className="border-b border-app-border px-6 py-4">
@@ -86,7 +105,9 @@ const ConfigDisplay: React.FC<ConfigDisplayProps> = ({ config }) => {
       <div className="p-6">
         <div className="grid grid-cols-1 gap-6">
           <div>
-            <h3 className="text-sm text-gray-500 uppercase tracking-wider mb-3">Information</h3>
+            <h3 className="text-sm text-gray-500 uppercase tracking-wider mb-3">
+              Information
+            </h3>
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span className="text-gray-600">Name</span>
@@ -98,7 +119,9 @@ const ConfigDisplay: React.FC<ConfigDisplayProps> = ({ config }) => {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Status</span>
-                <span className="font-medium text-green-500">{config.status}</span>
+                <span className="font-medium text-green-500">
+                  {config.status}
+                </span>
               </div>
             </div>
           </div>

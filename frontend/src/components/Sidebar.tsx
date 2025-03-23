@@ -11,24 +11,39 @@ import { Tool } from "@anthropic-ai/sdk/resources";
 interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
+  mcpClient: MCPClient | null;
 }
 
 // Server configuration
-interface ServerConfig {
+export interface ServerConfig {
   url: string;
   enabled?: boolean;
+  description?: string;
+  icon?: string;
 }
 
 // MCP Server configurations
-const MCP_SERVERS: Record<string, ServerConfig> = {
+export const MCP_SERVERS: Record<string, ServerConfig> = {
   "nilrag-brave": {
     url: "http://localhost:5173/mcp",
     enabled: false,
+    description: "Brave nilRAG Server (localhost)",
+    icon: "🦁",
   },
+  // Add more server configurations here
+};
+
+// Display server in a more user-friendly way
+export const getServerDisplayName = (serverName: string): string => {
+  const config = MCP_SERVERS[serverName];
+  if (!config || !config.icon) {
+    return serverName;
+  }
+  return `${config.icon} ${serverName}`;
 };
 
 // MCP Client implementation
-class MCPClient {
+export class MCPClient {
   private anthropic: Anthropic;
   private mcp: Client;
   private transport: SSEClientTransport | null = null;
@@ -187,7 +202,7 @@ class MCPClient {
 
   async processQuery(query: string) {
     if (this.tools.length === 0) {
-      return "Please connect to an MCP server to use tools. Use the 'Connect' button above to connect to a server.";
+      return "Please connect to an MCP server to use tools. Go to the Servers tab to connect to a server.";
     }
 
     const messages: MessageParam[] = [
@@ -198,6 +213,7 @@ class MCPClient {
     ];
 
     try {
+      // Initial Claude API call
       const response = await this.anthropic.messages.create({
         model: "claude-3-5-sonnet-20241022",
         max_tokens: 1000,
@@ -205,47 +221,125 @@ class MCPClient {
         tools: this.tools,
       });
 
-      const finalText = [];
+      // Process response and handle tool calls
+      const finalText: string[] = [];
 
       for (const content of response.content) {
         if (content.type === "text") {
           finalText.push(content.text);
         } else if (content.type === "tool_use") {
           const toolName = content.name;
-          const toolInput = content.input as Record<
-            string,
-            string | number | boolean
-          >;
+          const toolArgs = content.input as Record<string, unknown>;
+          const toolUseId = content.id;
 
+          // Log the tool call in the UI
           finalText.push(`🔧 Using tool: ${toolName}`);
 
           try {
-            if (!this.mcp) {
-              throw new Error("MCP client is not initialized");
+            // Add retry mechanism for tool calls
+            let retries = 2; // Maximum 3 attempts (initial + 2 retries)
+            let result;
+            let lastError;
+
+            while (retries >= 0) {
+              try {
+                result = await this.mcp.callTool({
+                  name: toolName,
+                  arguments: toolArgs,
+                });
+                break; // Success, exit the retry loop
+              } catch (error) {
+                lastError = error;
+                console.warn(
+                  `Tool call attempt failed (${2 - retries}/2): ${toolName}`,
+                  error
+                );
+
+                if (retries > 0) {
+                  // Wait before retrying (exponential backoff)
+                  await new Promise((resolve) =>
+                    setTimeout(resolve, 1000 * Math.pow(2, 2 - retries))
+                  );
+                }
+                retries--;
+              }
             }
 
-            // Call the tool through MCP
-            const result = await this.mcp.callTool({
-              name: toolName,
-              arguments: toolInput,
-            });
+            // If all retries failed, throw the last error
+            if (!result) {
+              throw lastError;
+            }
 
-            // Add the tool call to the conversation
+            // Add the tool result message - constructing proper message format
+            let toolResponse = "";
+            if (typeof result.content === "string") {
+              toolResponse = result.content;
+            } else if (
+              result.content !== null &&
+              typeof result.content === "object"
+            ) {
+              // Format the object as JSON string with indentation for better readability
+              try {
+                // Handle both arrays and objects consistently
+                if (Array.isArray(result.content)) {
+                  // For arrays, determine if it's a simple array or contains complex objects
+                  const isSimpleArray = result.content.every(
+                    (item) => typeof item !== "object" || item === null
+                  );
+
+                  if (isSimpleArray && result.content.length < 10) {
+                    // For small simple arrays, use a compact format
+                    toolResponse = JSON.stringify(result.content);
+                  } else {
+                    // For complex or larger arrays, use indented format
+                    toolResponse = JSON.stringify(result.content, null, 2);
+                  }
+                } else {
+                  // For objects, always use indented format
+                  toolResponse = JSON.stringify(result.content, null, 2);
+                }
+              } catch (err) {
+                toolResponse = `[Complex object: ${Object.prototype.toString.call(
+                  result.content
+                )}]`;
+              }
+            } else if (result.content === null) {
+              toolResponse = "null";
+            } else if (result.content === undefined) {
+              toolResponse = "undefined";
+            } else {
+              // Handle other primitive types
+              toolResponse = String(result.content);
+            }
+
+            finalText.push(`📊 Tool result: \n${toolResponse}`);
+
+            // Add the assistant's tool use message
             messages.push({
               role: "assistant",
-              content: `I'll use the ${toolName} tool to help with that.`,
+              content: [
+                {
+                  type: "tool_use",
+                  id: toolUseId,
+                  name: toolName,
+                  input: toolArgs,
+                },
+              ],
             });
 
-            // Add the result of the tool call to the conversation
-            const toolResponse = result.content as string;
+            // Add the tool result message
             messages.push({
               role: "user",
-              content: toolResponse,
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: toolUseId,
+                  content: toolResponse,
+                },
+              ],
             });
 
-            finalText.push(`📊 Tool result: ${toolResponse}`);
-
-            // Get a follow-up response from Claude with the tool result
+            // Get the next response from Claude with the tool result
             const followUpResponse = await this.anthropic.messages.create({
               model: "claude-3-5-sonnet-20241022",
               max_tokens: 1000,
@@ -266,20 +360,18 @@ class MCPClient {
               `❌ Error calling tool ${toolName}: ${errorMessage}`
             );
 
-            // Inform the model about the error
+            // Inform the model about the error and continue
             messages.push({
               role: "user",
-              content: `The tool ${toolName} failed with error: ${errorMessage}. Please continue without using this tool.`,
+              content: `Error using tool ${toolName}: ${errorMessage}. Please continue without this tool.`,
             });
 
-            // Get a response from Claude after the error
             const errorFollowUpResponse = await this.anthropic.messages.create({
               model: "claude-3-5-sonnet-20241022",
               max_tokens: 1000,
               messages,
             });
 
-            // Add error follow-up response
             for (const content of errorFollowUpResponse.content) {
               if (content.type === "text") {
                 finalText.push(content.text);
@@ -299,9 +391,11 @@ class MCPClient {
   }
 
   // Check if the server is available
-  async checkServerAvailability(
-    serverName: string
-  ): Promise<{ available: boolean; message: string }> {
+  async checkServerAvailability(serverName: string): Promise<{
+    available: boolean;
+    message: string;
+    health?: { status: string; latency: number };
+  }> {
     const serverConfig = MCP_SERVERS[serverName];
     if (!serverConfig) {
       return {
@@ -314,33 +408,71 @@ class MCPClient {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
 
-      // Just check if the server URL is accessible with a HEAD request
-      const response = await fetch(serverConfig.url, {
-        method: "HEAD",
-        signal: controller.signal,
-      });
+      const startTime = performance.now();
 
-      clearTimeout(timeoutId);
+      // Try to actually connect to the MCP endpoint
+      try {
+        // Just check if the server URL is accessible with a HEAD request
+        const response = await fetch(serverConfig.url, {
+          method: "HEAD",
+          signal: controller.signal,
+        });
 
-      if (response.ok) {
-        return {
-          available: true,
-          message: `Server ${serverName} is available`,
-        };
-      } else {
+        clearTimeout(timeoutId);
+        const latency = Math.round(performance.now() - startTime);
+
+        if (response.ok) {
+          return {
+            available: true,
+            message: `Server ${serverName} is available`,
+            health: {
+              status: "healthy",
+              latency: latency,
+            },
+          };
+        } else {
+          return {
+            available: false,
+            message: `Server responded with status: ${response.status}`,
+            health: {
+              status: "unhealthy",
+              latency: latency,
+            },
+          };
+        }
+      } catch (fetchError) {
+        // Handle fetch errors
+        clearTimeout(timeoutId);
+        const latency = Math.round(performance.now() - startTime);
+
+        if (
+          fetchError instanceof DOMException &&
+          fetchError.name === "AbortError"
+        ) {
+          return {
+            available: false,
+            message: `Connection to server ${serverName} timed out after 5 seconds`,
+            health: {
+              status: "timeout",
+              latency: 5000,
+            },
+          };
+        }
+
         return {
           available: false,
-          message: `Server responded with status: ${response.status}`,
+          message: `Error checking server availability: ${
+            fetchError instanceof Error
+              ? fetchError.message
+              : String(fetchError)
+          }`,
+          health: {
+            status: "error",
+            latency: latency,
+          },
         };
       }
     } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        return {
-          available: false,
-          message: `Connection to server ${serverName} timed out after 5 seconds`,
-        };
-      }
-
       return {
         available: false,
         message: `Error checking server availability: ${
@@ -351,7 +483,7 @@ class MCPClient {
   }
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
+const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, mcpClient }) => {
   const [messages, setMessages] = useState<
     Array<{
       id: string;
@@ -369,175 +501,14 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     },
   ]);
   const [isLoading, setIsLoading] = useState(false);
-  const [mcpClient, setMcpClient] = useState<MCPClient | null>(null);
-  const [serverStatus, setServerStatus] = useState<Record<string, boolean>>(
-    Object.keys(MCP_SERVERS).reduce((acc, server) => {
-      acc[server] = MCP_SERVERS[server].enabled || false;
-      return acc;
-    }, {} as Record<string, boolean>)
-  );
   const [availableTools, setAvailableTools] = useState<Tool[]>([]);
-  const [showTools, setShowTools] = useState(false);
-  const [serverLoadingStates, setServerLoadingStates] = useState<
-    Record<string, boolean>
-  >(
-    Object.keys(MCP_SERVERS).reduce((acc, server) => {
-      acc[server] = false;
-      return acc;
-    }, {} as Record<string, boolean>)
-  );
 
-  useEffect(() => {
-    // Initialize MCP client
-    const ANTHROPIC_API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY;
-    if (ANTHROPIC_API_KEY) {
-      setMcpClient(new MCPClient(ANTHROPIC_API_KEY as string));
-    }
-  }, []);
-
-  // Update available tools when client changes
+  // Update available tools when the client changes or when the client's state changes
   useEffect(() => {
     if (mcpClient) {
       setAvailableTools(mcpClient.getTools());
-
-      // Sync server status with connected servers
-      const connectedServers = mcpClient.getConnectedServers();
-      const updatedStatus = { ...serverStatus };
-
-      // Reset all to false first
-      Object.keys(updatedStatus).forEach((server) => {
-        updatedStatus[server] = false;
-      });
-
-      // Set connected ones to true
-      connectedServers.forEach((server) => {
-        if (Object.prototype.hasOwnProperty.call(updatedStatus, server)) {
-          updatedStatus[server] = true;
-        }
-      });
-
-      setServerStatus(updatedStatus);
     }
-  }, [mcpClient, serverStatus]);
-
-  // Connect or disconnect from a server when its status changes
-  const toggleServerConnection = async (serverName: string) => {
-    if (!mcpClient) return;
-
-    const isCurrentlyConnected = serverStatus[serverName];
-
-    // Set loading state for this specific server
-    setServerLoadingStates((prev) => ({
-      ...prev,
-      [serverName]: true,
-    }));
-
-    // Only check availability when connecting
-    if (!isCurrentlyConnected) {
-      // Check server availability first
-      const availabilityCheck = await mcpClient.checkServerAvailability(
-        serverName
-      );
-      if (!availabilityCheck.available) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: Date.now().toString(),
-            content: `Server unavailable: ${availabilityCheck.message}`,
-            isUser: false,
-            timestamp: formatTime(new Date()),
-          },
-        ]);
-
-        // Reset loading state
-        setServerLoadingStates((prev) => ({
-          ...prev,
-          [serverName]: false,
-        }));
-
-        return;
-      }
-    }
-
-    // Update UI state
-    setServerStatus((prev) => ({
-      ...prev,
-      [serverName]: !isCurrentlyConnected,
-    }));
-
-    try {
-      if (!isCurrentlyConnected) {
-        // Connect to the server
-        const success = await mcpClient.connectToServer(serverName);
-        if (success) {
-          // Update available tools
-          setAvailableTools(mcpClient.getTools());
-
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: Date.now().toString(),
-              content: `Connected to server: ${serverName}`,
-              isUser: false,
-              timestamp: formatTime(new Date()),
-            },
-          ]);
-        } else {
-          // Connection failed, revert status
-          setServerStatus((prev) => ({
-            ...prev,
-            [serverName]: false,
-          }));
-
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: Date.now().toString(),
-              content: `Failed to connect to server: ${serverName}`,
-              isUser: false,
-              timestamp: formatTime(new Date()),
-            },
-          ]);
-        }
-      } else {
-        // Disconnect from the server
-        const success = await mcpClient.disconnectFromServer(serverName);
-        if (success) {
-          // Update available tools
-          setAvailableTools(mcpClient.getTools());
-
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: Date.now().toString(),
-              content: `Disconnected from server: ${serverName}`,
-              isUser: false,
-              timestamp: formatTime(new Date()),
-            },
-          ]);
-        } else {
-          // Disconnection failed, revert status
-          setServerStatus((prev) => ({
-            ...prev,
-            [serverName]: true,
-          }));
-        }
-      }
-    } catch (error) {
-      console.error(`Error toggling server ${serverName} connection:`, error);
-      // Revert status on error
-      setServerStatus((prev) => ({
-        ...prev,
-        [serverName]: isCurrentlyConnected,
-      }));
-    } finally {
-      // Reset loading state
-      setServerLoadingStates((prev) => ({
-        ...prev,
-        [serverName]: false,
-      }));
-    }
-  };
+  }, [mcpClient]);
 
   function formatTime(date: Date): string {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -568,7 +539,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       if (mcpClient) {
         assistantContent = await mcpClient.processQuery(content);
 
-        // Update tools after the query in case they changed
+        // Update tools in case they changed
         setAvailableTools(mcpClient.getTools());
       } else {
         throw new Error("MCP Client not initialized");
@@ -653,88 +624,21 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           </button>
         </div>
 
-        {/* Server Connection Controls */}
-        <div className="p-4 border-b border-app-border">
-          <h3 className="text-sm font-medium mb-2">Connected Servers</h3>
-          <div className="space-y-2">
-            {Object.keys(MCP_SERVERS).map((serverName) => (
-              <div
-                key={serverName}
-                className="flex items-center justify-between"
-              >
-                <span className="text-sm">{serverName}</span>
-                <button
-                  onClick={() => toggleServerConnection(serverName)}
-                  disabled={serverLoadingStates[serverName]}
-                  className={cn(
-                    "px-3 py-1 text-xs rounded-full flex items-center gap-1",
-                    serverLoadingStates[serverName]
-                      ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-                      : serverStatus[serverName]
-                      ? "bg-green-100 text-green-700"
-                      : "bg-gray-100 text-gray-700"
-                  )}
-                >
-                  {serverLoadingStates[serverName] && (
-                    <span className="inline-block h-3 w-3 mr-1">
-                      <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        />
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                        />
-                      </svg>
-                    </span>
-                  )}
-                  {serverLoadingStates[serverName]
-                    ? "Connecting..."
-                    : serverStatus[serverName]
-                    ? "Disconnect"
-                    : "Connect"}
-                </button>
-              </div>
-            ))}
-          </div>
-
-          {/* Available Tools */}
-          {availableTools.length > 0 && (
-            <div className="mt-4">
-              <div
-                className="flex items-center justify-between cursor-pointer"
-                onClick={() => setShowTools(!showTools)}
-              >
-                <h3 className="text-sm font-medium">
-                  Available Tools ({availableTools.length})
-                </h3>
-                <button className="text-xs text-blue-500">
-                  {showTools ? "Hide" : "Show"}
-                </button>
-              </div>
-
-              {showTools && (
-                <div className="mt-2 space-y-2 text-xs bg-gray-50 p-2 rounded">
-                  {availableTools.map((tool, index) => (
-                    <div
-                      key={index}
-                      className="border-b border-gray-100 pb-2 last:border-b-0 last:pb-0"
-                    >
-                      <div className="font-medium">{tool.name}</div>
-                      <div className="text-gray-500">{tool.description}</div>
-                    </div>
-                  ))}
-                </div>
+        {/* Available Tools Info */}
+        {availableTools.length > 0 && (
+          <div className="p-4 border-b border-app-border">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium">
+                Available Tools ({availableTools.length})
+              </h3>
+              {availableTools.length > 0 && (
+                <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
+                  Connected
+                </span>
               )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages.map((message) => (
@@ -753,8 +657,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           isLoading={isLoading}
           placeholder={
             availableTools.length > 0
-              ? "Message with tools enabled..."
-              : "Connect to a server to enable tools..."
+              ? "Ask me anything. I can use tools from the connected server..."
+              : "Connect to a server in the Servers tab to enable tools..."
           }
         />
       </div>
