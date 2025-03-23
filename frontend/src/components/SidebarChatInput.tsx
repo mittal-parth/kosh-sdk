@@ -1,13 +1,13 @@
 import React, { useState, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
 
-interface ChatInputProps {
+interface SidebarChatInputProps {
   onSendMessage: (message: string) => void;
   isLoading?: boolean;
   placeholder?: string;
 }
 
-const ChatInput: React.FC<ChatInputProps> = ({
+const SidebarChatInput: React.FC<SidebarChatInputProps> = ({
   onSendMessage,
   isLoading = false,
   placeholder = "Type a message...",
@@ -107,4 +107,4 @@ const ChatInput: React.FC<ChatInputProps> = ({
   );
 };
 
-export default ChatInput;
+export default SidebarChatInput;
