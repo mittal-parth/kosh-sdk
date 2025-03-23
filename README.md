@@ -20,7 +20,21 @@ Simple and secure way to interact with remote MCP Servers in Trusted Execution E
 - All the MCP servers are deployed in a [TEE](https://docs.trustauthority.intel.com/main/articles/concept-tees-overview.html) environment powered by [Marlin](https://docs.marlin.org/oyster/introduction-to-marlin/), meaning all interactions are private and hardware-level secure.
 - We modified the existing community MCP servers to support [Cloudflare's Remote MCP](https://developers.cloudflare.com/agents/guides/remote-mcp-server/) protocol. This eliminates the need for running local proxy servers and allows users to access MCP servers from anywhere, rather than requiring them to be on the same machine as the client.
 
-## 🛠️ Setup and Configuration
+
+So imagine a scenario like this which can be built with just a few clicks:
+
+🔥 An AI powered on-call engineer that can:
+
+1. Access your GitHub repository and fetch a new issue/on-call ticket.
+2. Look at your runbooks and documents using nilRAG.
+3. Search the web using Brave Search.
+4. Look at past issues and pull requests in GitHub.
+5. Look at your organisation's Slack messages related to the issue.
+6. Post a summary of the triage on Slack.
+
+All of this being secure and private.
+
+## 🛠️ Local Setup and Configuration
 
 ### Prerequisites
 
@@ -59,6 +73,43 @@ npm install
 npm run dev
 ```
 
+6. You might need to edit the ports exposed for each MCP Server in `frontend/src/components/Sidebar.tsx` to match the ports you have exposed for each MCP Server.
+
+```
+export const MCP_SERVERS: Record<string, ServerConfig> = {
+  "Brave Search": {
+    url: "http://localhost:5177/mcp",
+    enabled: false,
+    description: "Search the web using Brave",
+    icon: "🦁",
+  },
+  Slack: {
+    url: "http://localhost:5176/mcp",
+    enabled: false,
+    description: "Chat with your team on Slack",
+    icon: "💬",
+  },
+  // Add more server configurations here
+};
+```
+
+## Using our remote MCP servers with Claude Desktop
+
+It is not necessary to use our MCP Servers with our client only. You can use our remote MCP servers with any other client that supports the MCP protocol, for instance Claude Desktop.
+
+Edit the `claude_desktop_config.json` file to add the MCP servers you want to use.
+
+```
+{
+  "mcpServers": {
+    "nilrag-brave": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://lz9og6rxzckr.share.zrok.io/mcp"] // 
+    }
+  }
+}
+```
+
 ## 📂 Project Structure
 
 - `/frontend` - The MCP Client with the UI to access the MCP servers
@@ -81,3 +132,5 @@ npm run dev
 - [Brave's MCP Server](https://github.com/modelcontextprotocol/servers/tree/main/src/brave-search)
 - [Slack's MCP Server](https://github.com/modelcontextprotocol/servers/tree/main/src/slack)
 - [nilRAG](https://github.com/NillionNetwork/nilrag/tree/main)
+- [lovable.dev](https://lovable.dev/)
+- [zrok](https://zrok.io/)
