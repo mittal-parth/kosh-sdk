@@ -6,58 +6,19 @@ export interface Env {
   MCP_OBJECT: DurableObjectNamespace;
   ASSETS: Fetcher;
   BRAVE_API_KEY: string;
-  SLACK_TOKEN: string;
+  SLACK_BOT_TOKEN: string;
   SLACK_TEAM_ID: string;
 }
 
-const RATE_LIMIT = {
-  perSecond: 1,
-  perMonth: 15000,
-};
-
-const requestCount = {
-  second: 0,
-  month: 0,
-  lastReset: Date.now(),
-};
-
-function checkRateLimit() {
-  const now = Date.now();
-  if (now - requestCount.lastReset > 1000) {
-    requestCount.second = 0;
-    requestCount.lastReset = now;
-  }
-  if (
-    requestCount.second >= RATE_LIMIT.perSecond ||
-    requestCount.month >= RATE_LIMIT.perMonth
-  ) {
-    throw new Error("Rate limit exceeded");
-  }
-  requestCount.second++;
-  requestCount.month++;
-}
-
-interface BraveWeb {
-  web?: {
-    results?: Array<{
-      title: string;
-      description: string;
-      url: string;
-      language?: string;
-      published?: string;
-      rank?: number;
-    }>;
-  };
-}
-
 class SlackClient {
-  private botHeaders: { Authorization: string; "Content-Type": string };
+  private botHeaders: { Authorization: string; "Content-Type": string; "ngrok-skip-browser-warning": string };
   private teamId: string;
 
   constructor(botToken: string, teamId: string) {
     this.botHeaders = {
       Authorization: `Bearer ${botToken}`,
       "Content-Type": "application/json",
+      "ngrok-skip-browser-warning": "true"
     };
     this.teamId = teamId;
   }
@@ -196,104 +157,33 @@ class SlackClient {
 
 export class MCPMathServer extends DurableMCP {
   server = new McpServer({
-    name: "Brave Search",
+    name: "Slack",
     version: "1.0.0",
   });
 
-  private BRAVE_API_KEY: string;
-  private SLACK_TOKEN: string;
+  private SLACK_BOT_TOKEN: string;
   private SLACK_TEAM_ID: string;
-  private slackClient: SlackClient;
+  private slackClient!: SlackClient;
 
   constructor(state: DurableObjectState, env: Env) {
     super(state, env);
-    this.BRAVE_API_KEY = env.BRAVE_API_KEY;
-    this.SLACK_TOKEN = env.SLACK_TOKEN || "";
+    this.SLACK_BOT_TOKEN = env.SLACK_BOT_TOKEN || "";
     this.SLACK_TEAM_ID = env.SLACK_TEAM_ID || "";
 
-    if (!this.BRAVE_API_KEY) {
-      console.error("Error: BRAVE_API_KEY environment variable is required");
-      throw new Error("BRAVE_API_KEY environment variable is required");
-    }
-
-    if (this.SLACK_TOKEN && this.SLACK_TEAM_ID) {
-      this.slackClient = new SlackClient(this.SLACK_TOKEN, this.SLACK_TEAM_ID);
-    }
-  }
-
-  private async performWebSearch(
-    query: string,
-    count: number = 10,
-    offset: number = 0
-  ) {
-    checkRateLimit();
-    const url = new URL("https://api.search.brave.com/res/v1/web/search");
-    url.searchParams.set("q", query);
-    url.searchParams.set("count", Math.min(count, 20).toString());
-    url.searchParams.set("offset", offset.toString());
-
-    const response = await fetch(url, {
-      headers: {
-        Accept: "application/json",
-        "Accept-Encoding": "gzip",
-        "X-Subscription-Token": this.BRAVE_API_KEY,
-      },
-    });
-
-    if (!response.ok) {
+    if (!this.SLACK_BOT_TOKEN || !this.SLACK_TEAM_ID) {
       throw new Error(
-        `Brave API error: ${response.status} ${
-          response.statusText
-        }\n${await response.text()}`
+        "SLACK_BOT_TOKEN and SLACK_TEAM_ID environment variables are required"
       );
     }
 
-    const data = (await response.json()) as BraveWeb;
-
-    const results = (data.web?.results || []).map((result) => ({
-      title: result.title || "",
-      description: result.description || "",
-      url: result.url || "",
-    }));
-
-    return results;
+    if (this.SLACK_BOT_TOKEN && this.SLACK_TEAM_ID) {
+      this.slackClient = new SlackClient(this.SLACK_BOT_TOKEN, this.SLACK_TEAM_ID);
+    }
   }
 
   async init() {
-    this.server.tool(
-      "brave_web_search",
-      {
-        query: z.string().describe("Search query (max 400 chars, 50 words)"),
-        count: z
-          .number()
-          .default(10)
-          .describe("Number of results (1-20, default 10)"),
-        offset: z
-          .number()
-          .default(0)
-          .describe("Pagination offset (max 9, default 0)"),
-      },
-      async ({ query, count, offset }) => {
-        const results = await this.performWebSearch(query, count, offset);
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: results
-                .map(
-                  (r) =>
-                    `Title: ${r.title}\nDescription: ${r.description}\nURL: ${r.url}`
-                )
-                .join("\n\n"),
-            },
-          ],
-        };
-      }
-    );
-
     // Only register Slack tools if we have a token
-    if (this.SLACK_TOKEN && this.SLACK_TEAM_ID) {
+    if (this.SLACK_BOT_TOKEN && this.SLACK_TEAM_ID) {
       this.server.tool(
         "slack_list_channels",
         {
@@ -696,21 +586,6 @@ Time Zone: ${profile.tz || "Not set"}
         }
       );
     }
-
-    this.server.tool(
-      "add",
-      {
-        a: z.number(),
-        b: z.number(),
-      },
-      async ({ a, b }) => {
-        return {
-          content: [{ type: "text", text: String(a + b) }],
-        };
-      }
-    );
-
-    // ... rest of the math tools ...
   }
 }
 

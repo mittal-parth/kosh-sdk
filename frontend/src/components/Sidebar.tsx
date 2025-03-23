@@ -24,10 +24,10 @@ export interface ServerConfig {
 
 // MCP Server configurations
 export const MCP_SERVERS: Record<string, ServerConfig> = {
-  "nilrag-brave": {
-    url: "http://localhost:5173/mcp",
+  "Brave Search": {
+    url: "https://dadc-2409-40f2-15a-d04a-ec2f-ff68-c1e7-5a5c.ngrok-free.app/mcp",
     enabled: false,
-    description: "Brave nilRAG Server (localhost)",
+    description: "Search the web using Brave",
     icon: "🦁",
   },
   // Sample servers - these are configured with the same URL to make them work with the existing server
@@ -37,11 +37,11 @@ export const MCP_SERVERS: Record<string, ServerConfig> = {
     description: "Vector Search Server",
     icon: "🔍",
   },
-  "knowledge-base": {
-    url: "http://localhost:5173/mcp", // Using same URL as nilrag-brave to make it work
+  "Slack": {
+    url: "http://localhost:5176/mcp",
     enabled: false,
-    description: "Knowledge Base Server",
-    icon: "📚",
+    description: "Chat with your team on Slack",
+    icon: "💬",
   },
   // Add more server configurations here
 };
