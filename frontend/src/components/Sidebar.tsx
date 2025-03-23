@@ -25,19 +25,19 @@ export interface ServerConfig {
 // MCP Server configurations
 export const MCP_SERVERS: Record<string, ServerConfig> = {
   "Brave Search": {
-    url: "http://localhost:5177/mcp",
+    url: "https://59eeca2d24ca.ngrok.app/mcp",
     enabled: false,
     description: "Search the web using Brave",
     icon: "🦁",
   },
   GitHub: {
-    url: "http://localhost:5174/mcp",
+    url: "http://localhost:5175/mcp",
     enabled: false,
     description: "Search GitHub repositories",
     icon: "🐙",
   },
   "NilRAG Server": {
-    url: "http://localhost:5175/mcp",
+    url: "http://localhost:5177/mcp",
     enabled: false,
     description: "Upload and query files on Nillion DB",
     icon: "🔍",
