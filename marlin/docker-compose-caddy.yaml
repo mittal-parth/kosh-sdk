@@ -1,0 +1,52 @@
+services:
+  math-mcp:
+    image: abhirajmengade/math-mcp:latest
+    container_name: math-mcp
+    network_mode: host
+    restart: unless-stopped
+    # Note: When using host network mode, the container will bind directly 
+    # to port 5173 on the host machine
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    network_mode: host
+    restart: unless-stopped
+    entrypoint: |
+      /bin/sh -c '
+      # Install curl if not already available
+      if ! command -v curl > /dev/null; then
+        apk add --no-cache curl
+      fi
+      
+      # Get public IP using ipify service
+      PUBLIC_IP=$(curl -s --max-time 3 https://api.ipify.org)
+      echo "Detected public IP: $PUBLIC_IP"
+      
+      # Create simplified Caddyfile with no ambiguity
+      cat > /etc/caddy/Caddyfile << EOF
+      {
+          # Global options
+          http_port 80
+          https_port 443
+      }
+      
+      # Single definition that handles all addresses
+      :80, :443 {
+          tls internal
+          reverse_proxy localhost:5173
+      }
+      EOF
+      
+      # Run Caddy with the generated config
+      /usr/bin/caddy run --config /etc/caddy/Caddyfile
+      '
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    # Note: When using host network mode, the container will bind directly
+    # to ports 80 and 443 on the host machine
+
+volumes:
+  caddy_data:
+  caddy_config:
