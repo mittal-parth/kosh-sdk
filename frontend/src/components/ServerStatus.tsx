@@ -1,11 +1,29 @@
 import React, { useState, useEffect } from "react";
-import { Server, ServerCog, X, CheckCircle, XCircle } from "lucide-react";
+import {
+  Server,
+  ServerCog,
+  X,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  Info,
+  RefreshCw,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { MCPClient } from "./Sidebar";
+import { MCPClient, MCP_SERVERS, getServerDisplayName } from "./Sidebar";
 import { Tool } from "@anthropic-ai/sdk/resources";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 
 // Server configuration from Sidebar
 interface ServerConfig {
@@ -15,38 +33,11 @@ interface ServerConfig {
   icon?: string;
 }
 
-// MCP Server configurations
-const MCP_SERVERS: Record<string, ServerConfig> = {
-  "nilrag-brave": {
-    url: "http://localhost:5173/mcp",
-    enabled: false,
-    description: "Brave nilRAG Server (localhost)",
-    icon: "🦁",
-  },
-  // Add sample servers for demonstration
-  "vector-search": {
-    url: "http://localhost:5174/mcp",
-    enabled: false,
-    description: "Vector Search Server",
-    icon: "🔍",
-  },
-  "knowledge-base": {
-    url: "http://localhost:5175/mcp",
-    enabled: false,
-    description: "Knowledge Base Server",
-    icon: "📚",
-  },
-  // Add more server configurations here
-};
+// Import server configurations from Sidebar instead of redefining them
+// const MCP_SERVERS: Record<string, ServerConfig> = { ... }
 
-// Display server in a more user-friendly way
-const getServerDisplayName = (serverName: string): string => {
-  const config = MCP_SERVERS[serverName];
-  if (!config || !config.icon) {
-    return serverName;
-  }
-  return `${config.icon} ${serverName}`;
-};
+// Use getServerDisplayName imported from Sidebar
+// const getServerDisplayName = (serverName: string): string => { ... };
 
 interface ServerStatusProps {
   mcpClient: MCPClient | null;
@@ -165,32 +156,28 @@ const ServerStatus: React.FC<ServerStatusProps> = ({
       }
     }
 
-    // Update UI state
-    setServerStatus((prev) => ({
-      ...prev,
-      [serverName]: !isCurrentlyConnected,
-    }));
-
     try {
+      let success = false;
+
       if (!isCurrentlyConnected) {
         // Connect to the server
-        const success = await mcpClient.connectToServer(serverName);
+        success = await mcpClient.connectToServer(serverName);
         if (success) {
           // Update available tools and connected servers
           setAvailableTools(mcpClient.getTools());
           setConnectedServers(mcpClient.getConnectedServers());
+
+          // Update server status
+          setServerStatus((prev) => ({
+            ...prev,
+            [serverName]: true,
+          }));
 
           toast({
             title: "Server connected",
             description: `Successfully connected to ${serverName}.`,
           });
         } else {
-          // Connection failed, revert status
-          setServerStatus((prev) => ({
-            ...prev,
-            [serverName]: false,
-          }));
-
           toast({
             title: "Connection failed",
             description: `Failed to connect to server: ${serverName}`,
@@ -199,29 +186,38 @@ const ServerStatus: React.FC<ServerStatusProps> = ({
         }
       } else {
         // Disconnect from the server
-        const success = await mcpClient.disconnectFromServer(serverName);
+        success = await mcpClient.disconnectFromServer(serverName);
         if (success) {
           // Update available tools and connected servers
           setAvailableTools(mcpClient.getTools());
           setConnectedServers(mcpClient.getConnectedServers());
+
+          // Update server status
+          setServerStatus((prev) => ({
+            ...prev,
+            [serverName]: false,
+          }));
 
           toast({
             title: "Server disconnected",
             description: `Disconnected from ${serverName}.`,
           });
         } else {
-          // Disconnection failed, revert status
-          setServerStatus((prev) => ({
-            ...prev,
-            [serverName]: true,
-          }));
-
           toast({
             title: "Disconnection failed",
             description: `Failed to disconnect from server: ${serverName}`,
             variant: "destructive",
           });
         }
+      }
+
+      // If operation was not successful, don't update UI state
+      if (!success) {
+        // Revert server status on error
+        setServerStatus((prev) => ({
+          ...prev,
+          [serverName]: isCurrentlyConnected,
+        }));
       }
     } catch (error) {
       console.error(`Error toggling server ${serverName} connection:`, error);
@@ -255,141 +251,166 @@ const ServerStatus: React.FC<ServerStatusProps> = ({
         </div>
 
         <div className="p-6">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="pb-2 text-left font-medium text-gray-500 text-sm">
-                    Server
-                  </th>
-                  <th className="pb-2 text-left font-medium text-gray-500 text-sm">
-                    URL
-                  </th>
-                  <th className="pb-2 text-left font-medium text-gray-500 text-sm">
-                    Status
-                  </th>
-                  <th className="pb-2 text-right font-medium text-gray-500 text-sm">
-                    Connection
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.keys(MCP_SERVERS).map((serverName) => (
-                  <tr
-                    key={serverName}
-                    className={cn(
-                      "border-b border-gray-100 hover:bg-gray-50 cursor-pointer",
-                      selectedServerId === serverName ? "bg-app-accent/5" : ""
-                    )}
-                    onClick={() =>
-                      setSelectedServerId(
-                        selectedServerId === serverName ? null : serverName
-                      )
-                    }
-                  >
-                    <td className="py-3">
-                      <div className="flex items-center">
-                        <div
-                          className={cn(
-                            "w-8 h-8 rounded-full flex items-center justify-center mr-2",
-                            serverStatus[serverName]
-                              ? "bg-green-100"
-                              : "bg-gray-100"
+          <div className="flex flex-col gap-6">
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Server Name</TableHead>
+                    <TableHead>URL</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Connection</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {Object.entries(MCP_SERVERS).map(([serverName, config]) => {
+                    const isConnected = serverStatus[serverName] || false;
+                    const isLoading = serverLoadingStates[serverName] || false;
+                    const healthInfo = serverHealthInfo[serverName];
+
+                    return (
+                      <TableRow key={serverName}>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            <span>{config.icon}</span>
+                            <span>{serverName}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">
+                          {config.url}
+                        </TableCell>
+                        <TableCell>
+                          {isConnected ? (
+                            <div className="flex items-center gap-2">
+                              <CheckCircle className="h-4 w-4 text-green-600" />
+                              <span className="text-green-600">Connected</span>
+                              {healthInfo && (
+                                <Badge variant="outline" className="ml-2">
+                                  {healthInfo.latency}ms
+                                </Badge>
+                              )}
+                            </div>
+                          ) : healthInfo ? (
+                            <div className="flex items-center gap-2">
+                              {healthInfo.status === "timeout" ? (
+                                <>
+                                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                                  <span className="text-amber-600">
+                                    Timeout
+                                  </span>
+                                </>
+                              ) : healthInfo.status === "error" ? (
+                                <>
+                                  <AlertCircle className="h-4 w-4 text-red-600" />
+                                  <span className="text-red-600">Error</span>
+                                </>
+                              ) : healthInfo.status === "unknown" ? (
+                                <>
+                                  <Info className="h-4 w-4 text-blue-600" />
+                                  <span className="text-blue-600">Unknown</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Info className="h-4 w-4 text-slate-600" />
+                                  <span className="text-slate-600">
+                                    Disconnected
+                                  </span>
+                                </>
+                              )}
+                              {healthInfo &&
+                                healthInfo.latency !== undefined && (
+                                  <Badge variant="outline" className="ml-2">
+                                    {healthInfo.latency}ms
+                                  </Badge>
+                                )}
+                            </div>
+                          ) : (
+                            <span className="text-slate-600">Not checked</span>
                           )}
-                        >
-                          <Server
-                            className={cn(
-                              "h-4 w-4",
-                              serverStatus[serverName]
-                                ? "text-green-600"
-                                : "text-gray-600"
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={isConnected}
+                              disabled={isLoading}
+                              onCheckedChange={() =>
+                                toggleServerConnection(serverName)
+                              }
+                            />
+                            {isLoading && (
+                              <RefreshCw className="h-4 w-4 animate-spin text-slate-500" />
                             )}
-                          />
-                        </div>
-                        <div>
-                          <div className="font-medium">
-                            {getServerDisplayName(serverName)}
                           </div>
-                          <div className="text-xs text-gray-500">
-                            {MCP_SERVERS[serverName].description}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 text-sm font-mono text-gray-600">
-                      {MCP_SERVERS[serverName].url}
-                    </td>
-                    <td className="py-3">
-                      {serverHealthInfo[serverName] ? (
-                        <div className="flex items-center">
-                          <span
-                            className={cn(
-                              "w-2 h-2 rounded-full mr-2",
-                              serverHealthInfo[serverName]?.status === "healthy"
-                                ? "bg-green-500"
-                                : serverHealthInfo[serverName]?.status ===
-                                  "unhealthy"
-                                ? "bg-yellow-500"
-                                : "bg-red-500"
-                            )}
-                          ></span>
-                          <span className="text-sm">
-                            {serverHealthInfo[serverName]?.status === "healthy"
-                              ? "Healthy"
-                              : serverHealthInfo[serverName]?.status ===
-                                "unhealthy"
-                              ? "Unhealthy"
-                              : "Error"}
-                          </span>
-                          <span className="text-xs text-gray-500 ml-1">
-                            ({serverHealthInfo[serverName]?.latency}ms)
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-sm text-gray-500">Unknown</span>
-                      )}
-                    </td>
-                    <td className="py-3 text-right">
-                      <div className="flex items-center justify-end">
-                        {serverLoadingStates[serverName] ? (
-                          <div className="flex items-center text-yellow-600">
-                            <svg
-                              className="animate-spin -ml-1 mr-2 h-4 w-4"
-                              xmlns="http://www.w3.org/2000/svg"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                            >
-                              <circle
-                                className="opacity-25"
-                                cx="12"
-                                cy="12"
-                                r="10"
-                                stroke="currentColor"
-                                strokeWidth="4"
-                              ></circle>
-                              <path
-                                className="opacity-75"
-                                fill="currentColor"
-                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                              ></path>
-                            </svg>
-                            <span className="text-sm">Connecting...</span>
-                          </div>
-                        ) : (
-                          <Switch
-                            checked={serverStatus[serverName]}
-                            onCheckedChange={() =>
-                              toggleServerConnection(serverName)
-                            }
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="rounded-md border p-4">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-lg font-semibold">Available Tools</h3>
+                {connectedServers.length > 0 && (
+                  <Badge variant="outline">
+                    {connectedServers.length} server
+                    {connectedServers.length !== 1 ? "s" : ""} connected
+                  </Badge>
+                )}
+              </div>
+
+              {availableTools.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tool Name</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Server</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {availableTools.map((tool, index) => (
+                      <TableRow key={`${tool.name}-${index}`}>
+                        <TableCell className="font-medium">
+                          {tool.name}
+                        </TableCell>
+                        <TableCell>{tool.description}</TableCell>
+                        <TableCell>
+                          {/* Try to determine which server this tool belongs to */}
+                          {connectedServers.length === 1 ? (
+                            <div className="flex items-center gap-2">
+                              <span>
+                                {MCP_SERVERS[connectedServers[0]]?.icon}
+                              </span>
+                              <span>{connectedServers[0]}</span>
+                            </div>
+                          ) : (
+                            <Badge variant="outline">Unknown</Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : connectedServers.length > 0 ? (
+                <div className="rounded-md bg-amber-50 p-4 text-amber-800">
+                  <div className="flex items-center gap-2">
+                    <Info className="h-5 w-5" />
+                    <span>
+                      No tools available from the connected server(s).
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-md bg-slate-50 p-4 text-slate-800">
+                  <div className="flex items-center gap-2">
+                    <Info className="h-5 w-5" />
+                    <span>Connect to a server to see available tools.</span>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

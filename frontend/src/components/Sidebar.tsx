@@ -30,6 +30,19 @@ export const MCP_SERVERS: Record<string, ServerConfig> = {
     description: "Brave nilRAG Server (localhost)",
     icon: "🦁",
   },
+  // Sample servers - these are configured with the same URL to make them work with the existing server
+  "vector-search": {
+    url: "http://localhost:5173/mcp", // Using same URL as nilrag-brave to make it work
+    enabled: false,
+    description: "Vector Search Server",
+    icon: "🔍",
+  },
+  "knowledge-base": {
+    url: "http://localhost:5173/mcp", // Using same URL as nilrag-brave to make it work
+    enabled: false,
+    description: "Knowledge Base Server",
+    icon: "📚",
+  },
   // Add more server configurations here
 };
 
@@ -46,9 +59,10 @@ export const getServerDisplayName = (serverName: string): string => {
 export class MCPClient {
   private anthropic: Anthropic;
   private mcp: Client;
-  private transport: SSEClientTransport | null = null;
+  private transports: Record<string, SSEClientTransport> = {};
   private tools: Tool[] = [];
   private connectedServers: string[] = [];
+  private serverTools: Record<string, Tool[]> = {};
 
   constructor(apiKey: string) {
     this.anthropic = new Anthropic({
@@ -69,18 +83,15 @@ export class MCPClient {
 
       const serverConfig = MCP_SERVERS[serverName];
       if (!serverConfig) {
-        throw new Error(`Unknown server: ${serverName}`);
+        console.error(`Unknown server: ${serverName}`);
+        return false;
       }
 
-      // Close any existing transport
-      if (this.transport) {
-        await this.disconnectFromAllServers();
-      }
-
-      // Create transport - use SSEClientTransport for browser environments
+      // Create transport for this specific server
       console.log(`Creating SSE transport for URL: ${serverConfig.url}`);
       try {
-        this.transport = new SSEClientTransport(new URL(serverConfig.url));
+        const transport = new SSEClientTransport(new URL(serverConfig.url));
+        this.transports[serverName] = transport;
       } catch (error) {
         console.error("Error creating SSE transport:", error);
         throw new Error(
@@ -91,12 +102,26 @@ export class MCPClient {
       }
 
       // Connect to the server
-      console.log("Connecting to MCP server...");
+      console.log(`Connecting to MCP server ${serverName}...`);
       try {
-        await this.mcp.connect(this.transport);
-        console.log("Successfully connected to MCP server");
+        await this.mcp.connect(this.transports[serverName]);
+        console.log(`Successfully connected to MCP server ${serverName}`);
       } catch (error) {
-        console.error("Error connecting to MCP server:", error);
+        console.error(`Error connecting to MCP server ${serverName}:`, error);
+
+        // Clean up the transport on connection failure
+        if (this.transports[serverName]) {
+          try {
+            await this.transports[serverName].close();
+            delete this.transports[serverName];
+          } catch (closeError) {
+            console.error(
+              "Error closing transport after connection failure:",
+              closeError
+            );
+          }
+        }
+
         throw new Error(
           `Failed to connect to MCP server: ${
             error instanceof Error ? error.message : String(error)
@@ -105,13 +130,29 @@ export class MCPClient {
       }
 
       // Get tools from the server
-      console.log("Fetching tools from server...");
+      console.log(`Fetching tools from server ${serverName}...`);
       let toolsResult;
       try {
         toolsResult = await this.mcp.listTools();
-        console.log(`Received ${toolsResult.tools.length} tools from server`);
+        console.log(
+          `Received ${toolsResult.tools.length} tools from server ${serverName}`
+        );
       } catch (error) {
-        console.error("Error fetching tools from server:", error);
+        console.error(`Error fetching tools from server ${serverName}:`, error);
+
+        // Clean up the transport on tool fetch failure
+        if (this.transports[serverName]) {
+          try {
+            await this.transports[serverName].close();
+            delete this.transports[serverName];
+          } catch (closeError) {
+            console.error(
+              "Error closing transport after tool fetch failure:",
+              closeError
+            );
+          }
+        }
+
         throw new Error(
           `Failed to fetch tools: ${
             error instanceof Error ? error.message : String(error)
@@ -119,7 +160,8 @@ export class MCPClient {
         );
       }
 
-      this.tools = toolsResult.tools.map((tool) => {
+      // Format tools for this server
+      const formattedTools = toolsResult.tools.map((tool) => {
         return {
           name: tool.name,
           description: tool.description,
@@ -131,17 +173,35 @@ export class MCPClient {
         };
       });
 
+      // Store tools for this specific server
+      this.serverTools[serverName] = formattedTools;
+
+      // Update combined tools list
+      this.tools = Object.values(this.serverTools).flat();
+
       // Add to connected servers
       this.connectedServers.push(serverName);
 
       console.log(
-        "Connected to server with tools:",
-        this.tools.map(({ name }) => name)
+        `Connected to server ${serverName} with tools:`,
+        formattedTools.map(({ name }) => name)
       );
 
       return true;
     } catch (e) {
       console.error(`Failed to connect to MCP server ${serverName}:`, e);
+      // Clean up any remaining transport
+      if (this.transports[serverName]) {
+        try {
+          await this.transports[serverName].close();
+        } catch (closeError) {
+          console.error(
+            "Error closing transport after connection failure:",
+            closeError
+          );
+        }
+        delete this.transports[serverName];
+      }
       return false;
     }
   }
@@ -149,21 +209,29 @@ export class MCPClient {
   // Disconnect from a server
   async disconnectFromServer(serverName: string) {
     try {
+      if (!this.connectedServers.includes(serverName)) {
+        console.log(`Server ${serverName} is not connected`);
+        return true;
+      }
+
+      // Close the specific transport
+      if (this.transports[serverName]) {
+        await this.transports[serverName].close();
+        delete this.transports[serverName];
+      }
+
+      // Remove server tools
+      delete this.serverTools[serverName];
+
+      // Update combined tools list
+      this.tools = Object.values(this.serverTools).flat();
+
       // Remove from connected servers list
       this.connectedServers = this.connectedServers.filter(
         (name) => name !== serverName
       );
 
-      // If no more connected servers, disconnect from everything
-      if (this.connectedServers.length === 0) {
-        return this.disconnectFromAllServers();
-      }
-
       console.log(`Disconnected from server: ${serverName}`);
-
-      // Clear tools when disconnecting
-      this.tools = [];
-
       return true;
     } catch (e) {
       console.error(`Failed to disconnect from MCP server ${serverName}:`, e);
@@ -174,12 +242,19 @@ export class MCPClient {
   // Disconnect from all servers
   async disconnectFromAllServers() {
     try {
-      if (this.transport) {
-        await this.transport.close();
-        this.transport = null;
+      // Close all transports
+      for (const serverName of Object.keys(this.transports)) {
+        try {
+          await this.transports[serverName].close();
+        } catch (e) {
+          console.error(`Error closing transport for ${serverName}:`, e);
+        }
       }
 
+      // Reset all state
+      this.transports = {};
       this.connectedServers = [];
+      this.serverTools = {};
       this.tools = [];
 
       console.log("Disconnected from all servers");
@@ -445,6 +520,27 @@ export class MCPClient {
         clearTimeout(timeoutId);
         const latency = Math.round(performance.now() - startTime);
 
+        // Special case for CORS errors which often happen in browser environments
+        const errorMessage =
+          fetchError instanceof Error ? fetchError.message : String(fetchError);
+        if (
+          errorMessage.includes("CORS") ||
+          errorMessage.includes("cross-origin")
+        ) {
+          // If it's a CORS error, we might still be able to connect via MCP
+          console.warn(
+            "CORS error detected during availability check, will attempt connection anyway"
+          );
+          return {
+            available: true,
+            message: `Server ${serverName} might be available (CORS error during check)`,
+            health: {
+              status: "unknown",
+              latency: latency,
+            },
+          };
+        }
+
         if (
           fetchError instanceof DOMException &&
           fetchError.name === "AbortError"
@@ -461,11 +557,7 @@ export class MCPClient {
 
         return {
           available: false,
-          message: `Error checking server availability: ${
-            fetchError instanceof Error
-              ? fetchError.message
-              : String(fetchError)
-          }`,
+          message: `Error checking server availability: ${errorMessage}`,
           health: {
             status: "error",
             latency: latency,
