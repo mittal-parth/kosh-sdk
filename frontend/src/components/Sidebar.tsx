@@ -25,7 +25,7 @@ export interface ServerConfig {
 // MCP Server configurations
 export const MCP_SERVERS: Record<string, ServerConfig> = {
   "Brave Search": {
-    url: "http://localhost:5174/mcp",
+    url: "http://localhost:5173/mcp",
     enabled: false,
     description: "Search the web using Brave",
     icon: "🦁",
@@ -431,16 +431,16 @@ export class MCPClient {
                 const nestedToolName = content.name;
                 const nestedToolArgs = content.input as Record<string, unknown>;
                 const nestedToolUseId = content.id;
-                
+
                 // Log the nested tool call in the UI
                 finalText.push(`🔧 Using tool: ${nestedToolName}`);
-                
+
                 try {
                   // Add retry mechanism for nested tool calls
                   let retries = 2; // Maximum 3 attempts (initial + 2 retries)
                   let nestedResult;
                   let lastError;
-                  
+
                   while (retries >= 0) {
                     try {
                       nestedResult = await this.mcp.callTool({
@@ -451,10 +451,12 @@ export class MCPClient {
                     } catch (error) {
                       lastError = error;
                       console.warn(
-                        `Nested tool call attempt failed (${2 - retries}/2): ${nestedToolName}`,
+                        `Nested tool call attempt failed (${
+                          2 - retries
+                        }/2): ${nestedToolName}`,
                         error
                       );
-                      
+
                       if (retries > 0) {
                         // Wait before retrying (exponential backoff)
                         await new Promise((resolve) =>
@@ -464,12 +466,12 @@ export class MCPClient {
                       retries--;
                     }
                   }
-                  
+
                   // If all retries failed, throw the last error
                   if (!nestedResult) {
                     throw lastError;
                   }
-                  
+
                   // Process the nested tool result
                   let nestedToolResponse = "";
                   if (typeof nestedResult.content === "string") {
@@ -484,14 +486,24 @@ export class MCPClient {
                         const isSimpleArray = nestedResult.content.every(
                           (item) => typeof item !== "object" || item === null
                         );
-                        
+
                         if (isSimpleArray && nestedResult.content.length < 10) {
-                          nestedToolResponse = JSON.stringify(nestedResult.content);
+                          nestedToolResponse = JSON.stringify(
+                            nestedResult.content
+                          );
                         } else {
-                          nestedToolResponse = JSON.stringify(nestedResult.content, null, 2);
+                          nestedToolResponse = JSON.stringify(
+                            nestedResult.content,
+                            null,
+                            2
+                          );
                         }
                       } else {
-                        nestedToolResponse = JSON.stringify(nestedResult.content, null, 2);
+                        nestedToolResponse = JSON.stringify(
+                          nestedResult.content,
+                          null,
+                          2
+                        );
                       }
                     } catch (err) {
                       nestedToolResponse = `[Complex object: ${Object.prototype.toString.call(
@@ -505,9 +517,9 @@ export class MCPClient {
                   } else {
                     nestedToolResponse = String(nestedResult.content);
                   }
-                  
+
                   finalText.push(`📊 Tool result: \n${nestedToolResponse}`);
-                  
+
                   // Add the assistant's nested tool use message
                   messages.push({
                     role: "assistant",
@@ -520,7 +532,7 @@ export class MCPClient {
                       },
                     ],
                   });
-                  
+
                   // Add the nested tool result message
                   messages.push({
                     role: "user",
@@ -532,15 +544,16 @@ export class MCPClient {
                       },
                     ],
                   });
-                  
+
                   // Get another follow-up response from Claude with the nested tool result
-                  const nestedFollowUpResponse = await this.anthropic.messages.create({
-                    model: "claude-3-5-sonnet-20241022",
-                    max_tokens: 1000,
-                    messages,
-                    tools: this.tools,
-                  });
-                  
+                  const nestedFollowUpResponse =
+                    await this.anthropic.messages.create({
+                      model: "claude-3-5-sonnet-20241022",
+                      max_tokens: 1000,
+                      messages,
+                      tools: this.tools,
+                    });
+
                   // Process the nested follow-up response - just add the text parts
                   for (const content of nestedFollowUpResponse.content) {
                     if (content.type === "text") {
@@ -550,25 +563,29 @@ export class MCPClient {
                     // If more depth is needed, consider implementing a full recursive approach
                   }
                 } catch (error) {
-                  console.error(`Error calling nested tool ${nestedToolName}:`, error);
+                  console.error(
+                    `Error calling nested tool ${nestedToolName}:`,
+                    error
+                  );
                   const errorMessage =
                     error instanceof Error ? error.message : String(error);
                   finalText.push(
                     `❌ Error calling tool ${nestedToolName}: ${errorMessage}`
                   );
-                  
+
                   // Inform the model about the error and continue
                   messages.push({
                     role: "user",
                     content: `Error using tool ${nestedToolName}: ${errorMessage}. Please continue without this tool.`,
                   });
-                  
-                  const nestedErrorFollowUpResponse = await this.anthropic.messages.create({
-                    model: "claude-3-5-sonnet-20241022",
-                    max_tokens: 1000,
-                    messages,
-                  });
-                  
+
+                  const nestedErrorFollowUpResponse =
+                    await this.anthropic.messages.create({
+                      model: "claude-3-5-sonnet-20241022",
+                      max_tokens: 1000,
+                      messages,
+                    });
+
                   for (const content of nestedErrorFollowUpResponse.content) {
                     if (content.type === "text") {
                       finalText.push(content.text);
