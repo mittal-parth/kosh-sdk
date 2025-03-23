@@ -11,14 +11,13 @@ export interface Env {
 }
 
 class SlackClient {
-  private botHeaders: { Authorization: string; "Content-Type": string; "ngrok-skip-browser-warning": string };
+  private botHeaders: { Authorization: string; "Content-Type": string };
   private teamId: string;
 
   constructor(botToken: string, teamId: string) {
     this.botHeaders = {
       Authorization: `Bearer ${botToken}`,
       "Content-Type": "application/json",
-      "ngrok-skip-browser-warning": "true"
     };
     this.teamId = teamId;
   }
