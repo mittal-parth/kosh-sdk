@@ -17,48 +17,7 @@ import {
 export interface Env {
   MCP_OBJECT: DurableObjectNamespace;
   ASSETS: Fetcher;
-  BRAVE_API_KEY: string;
   GITHUB_PERSONAL_ACCESS_TOKEN: string;
-}
-
-const RATE_LIMIT = {
-  perSecond: 1,
-  perMonth: 15000,
-};
-
-const requestCount = {
-  second: 0,
-  month: 0,
-  lastReset: Date.now(),
-};
-
-function checkRateLimit() {
-  const now = Date.now();
-  if (now - requestCount.lastReset > 1000) {
-    requestCount.second = 0;
-    requestCount.lastReset = now;
-  }
-  if (
-    requestCount.second >= RATE_LIMIT.perSecond ||
-    requestCount.month >= RATE_LIMIT.perMonth
-  ) {
-    throw new Error("Rate limit exceeded");
-  }
-  requestCount.second++;
-  requestCount.month++;
-}
-
-interface BraveWeb {
-  web?: {
-    results?: Array<{
-      title: string;
-      description: string;
-      url: string;
-      language?: string;
-      published?: string;
-      rank?: number;
-    }>;
-  };
 }
 
 // Helper function to format GitHub errors
@@ -127,44 +86,6 @@ export class MCPGitHubServer extends DurableMCP {
     // We'll handle the token in a different way or let the operation utils use env vars directly
   }
 
-  private async performWebSearch(
-    query: string,
-    count: number = 10,
-    offset: number = 0
-  ) {
-    checkRateLimit();
-    const url = new URL("https://api.search.brave.com/res/v1/web/search");
-    url.searchParams.set("q", query);
-    url.searchParams.set("count", Math.min(count, 20).toString());
-    url.searchParams.set("offset", offset.toString());
-
-    const response = await fetch(url, {
-      headers: {
-        Accept: "application/json",
-        "Accept-Encoding": "gzip",
-        "X-Subscription-Token": this.BRAVE_API_KEY,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(
-        `Brave API error: ${response.status} ${
-          response.statusText
-        }\n${await response.text()}`
-      );
-    }
-
-    const data = (await response.json()) as BraveWeb;
-
-    const results = (data.web?.results || []).map((result) => ({
-      title: result.title || "",
-      description: result.description || "",
-      url: result.url || "",
-    }));
-
-    return results;
-  }
-
   private async githubRequest(url: string, options: GitHubRequestOptions = {}) {
     const headers = {
       Accept: "application/vnd.github.v3+json",
@@ -192,6 +113,7 @@ export class MCPGitHubServer extends DurableMCP {
     // Add GitHub repository search tool
     this.server.tool(
       "search_repositories",
+      "Search for GitHub repositories using GitHub's search syntax",
       {
         query: z.string().describe("Search query (see GitHub search syntax)"),
         page: z
@@ -231,6 +153,7 @@ export class MCPGitHubServer extends DurableMCP {
     // Add GitHub create repository tool
     this.server.tool(
       "create_repository",
+      "Create a new GitHub repository in your account or organization",
       {
         name: z.string().describe("Repository name"),
         description: z.string().optional().describe("Repository description"),
@@ -264,6 +187,7 @@ export class MCPGitHubServer extends DurableMCP {
     // Add GitHub fork repository tool
     this.server.tool(
       "fork_repository",
+      "Fork an existing GitHub repository to your account or organization",
       {
         owner: z
           .string()
@@ -304,6 +228,7 @@ export class MCPGitHubServer extends DurableMCP {
     // Add GitHub get file contents tool
     this.server.tool(
       "get_file_contents",
+      "Retrieve the contents of a specific file from a GitHub repository",
       {
         owner: z
           .string()
@@ -344,6 +269,7 @@ export class MCPGitHubServer extends DurableMCP {
     // Add GitHub create or update file tool
     this.server.tool(
       "create_or_update_file",
+      "Create a new file or update an existing file in a GitHub repository",
       {
         owner: z
           .string()
@@ -392,6 +318,7 @@ export class MCPGitHubServer extends DurableMCP {
     // Add GitHub push files tool
     this.server.tool(
       "push_files",
+      "Push multiple files to a GitHub repository in a single commit",
       {
         owner: z
           .string()
@@ -443,6 +370,7 @@ export class MCPGitHubServer extends DurableMCP {
     // Add GitHub create branch tool
     this.server.tool(
       "create_branch",
+      "Create a new branch in a GitHub repository from an existing branch",
       {
         owner: z
           .string()
@@ -480,6 +408,7 @@ export class MCPGitHubServer extends DurableMCP {
     // Add GitHub list issues tool
     this.server.tool(
       "list_issues",
+      "List issues in a GitHub repository with filtering options",
       {
         owner: z
           .string()
@@ -530,6 +459,7 @@ export class MCPGitHubServer extends DurableMCP {
     // Add GitHub create issue tool
     this.server.tool(
       "create_issue",
+      "Create a new issue in a GitHub repository",
       {
         owner: z
           .string()
@@ -567,6 +497,7 @@ export class MCPGitHubServer extends DurableMCP {
     // Add GitHub get issue tool
     this.server.tool(
       "get_issue",
+      "Retrieve details of a specific issue in a GitHub repository",
       {
         owner: z
           .string()
@@ -598,6 +529,7 @@ export class MCPGitHubServer extends DurableMCP {
     // Add GitHub create pull request tool
     this.server.tool(
       "create_pull_request",
+      "Create a new pull request to merge changes between branches",
       {
         owner: z
           .string()
@@ -633,6 +565,7 @@ export class MCPGitHubServer extends DurableMCP {
     // Add GitHub get pull request tool
     this.server.tool(
       "get_pull_request",
+      "Retrieve details of a specific pull request in a GitHub repository",
       {
         owner: z
           .string()
@@ -668,6 +601,7 @@ export class MCPGitHubServer extends DurableMCP {
     // Add GitHub list pull requests tool
     this.server.tool(
       "list_pull_requests",
+      "List pull requests in a GitHub repository with filtering options",
       {
         owner: z
           .string()
@@ -716,6 +650,7 @@ export class MCPGitHubServer extends DurableMCP {
     // Add GitHub list commits tool
     this.server.tool(
       "list_commits",
+      "List commits in a GitHub repository with filtering options",
       {
         owner: z
           .string()
@@ -764,6 +699,7 @@ export class MCPGitHubServer extends DurableMCP {
     // Add GitHub search code tool (fixed parameter naming)
     this.server.tool(
       "search_code",
+      "Search for code across GitHub repositories using GitHub's search syntax",
       {
         q: z.string().describe("Search query (see GitHub search syntax)"),
         sort: z
@@ -804,6 +740,7 @@ export class MCPGitHubServer extends DurableMCP {
     // Add GitHub search issues tool (fixed parameter naming)
     this.server.tool(
       "search_issues",
+      "Search for issues and pull requests across GitHub using GitHub's search syntax",
       {
         q: z.string().describe("Search query (see GitHub search syntax)"),
         sort: z
@@ -856,6 +793,7 @@ export class MCPGitHubServer extends DurableMCP {
     // Add GitHub search users tool
     this.server.tool(
       "search_users",
+      "Search for users across GitHub using GitHub's search syntax",
       {
         q: z.string().describe("Search query (see GitHub search syntax)"),
         sort: z
